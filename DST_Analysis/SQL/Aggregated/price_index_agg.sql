@@ -1,34 +1,101 @@
 WITH v_inputs AS (
   SELECT
-    CAST(:comm_date    AS DATE)   AS comm_date,
-    CAST(:rollout_date AS DATE)   AS rollout_date,
-    CAST(:start_date   AS DATE)   AS start_date,
-    CAST(:end_date     AS DATE)   AS end_date,
-    CAST(:country      AS STRING) AS country,
-    CAST(:tour_ids     AS STRING) AS tour_ids,
-    CAST(:x_weeks      AS INT)    AS x_weeks
+    CAST(:comm_date          AS DATE)   AS comm_date,
+    CAST(:rollout_date       AS DATE)   AS rollout_date,
+    CAST(:country            AS STRING) AS country,
+    CAST(:tour_ids           AS STRING) AS tour_ids,
+    CAST(:supplier_ids       AS STRING) AS supplier_ids,
+    CAST(:comm_weeks_before   AS INT)    AS comm_weeks_before,
+    CAST(:comm_weeks_after    AS INT)    AS comm_weeks_after,
+    CAST(:rollout_weeks_before  AS INT)    AS rollout_weeks_before,
+    CAST(:rollout_weeks_after   AS INT)    AS rollout_weeks_after
 ),
 
 tour_filter AS (
-  SELECT CAST(trim(x) AS BIGINT) AS tour_id
-  FROM v_inputs p
-  LATERAL VIEW explode(split(p.tour_ids, ',')) e AS x
-  WHERE trim(x) <> ''
+  SELECT CAST(trim(value) AS BIGINT) AS tour_id
+  FROM v_inputs
+  LATERAL VIEW explode(split(tour_ids, ',')) AS value
+  WHERE tour_ids != '' AND trim(value) != ''
+),
+
+supplier_filter AS (
+  SELECT CAST(trim(value) AS BIGINT) AS supplier_id
+  FROM v_inputs
+  LATERAL VIEW explode(split(supplier_ids, ',')) AS value
+  WHERE supplier_ids != '' AND trim(value) != ''
+),
+
+filter_flags AS (
+  SELECT 
+    CASE WHEN COALESCE(tour_ids, '') = '' THEN 0 ELSE 1 END AS should_filter_tours,
+    CASE WHEN COALESCE(supplier_ids, '') = '' THEN 0 ELSE 1 END AS should_filter_suppliers
+  FROM v_inputs
 ),
 
 date_ranges AS (
   SELECT
-    CAST(date_trunc('week', CAST(i.comm_date    AS timestamp)) AS date) AS cy_comm_week_start,
-    CAST(date_trunc('week', CAST(i.rollout_date AS timestamp)) AS date) AS cy_rollout_week_start,
+    date_trunc('week', pr.comm_date) AS cy_comm_week_start,
+    date_trunc('week', pr.rollout_date) AS cy_rollout_week_start,
+    date_trunc('week', add_months(pr.comm_date, -12)) AS ly_comm_week_start,
+    date_trunc('week', add_months(pr.rollout_date, -12)) AS ly_rollout_week_start,
 
-    CAST(date_trunc('week', CAST(add_months(i.comm_date,    -12) AS timestamp)) AS date) AS ly_comm_week_start,
-    CAST(date_trunc('week', CAST(add_months(i.rollout_date, -12) AS timestamp)) AS date) AS ly_rollout_week_start,
-
-    i.start_date,
-    i.end_date,
-    i.x_weeks,
-    i.country
-  FROM v_inputs i
+    pr.country,
+    pr.comm_weeks_before,
+    pr.comm_weeks_after,
+    pr.rollout_weeks_before,
+    pr.rollout_weeks_after,
+    
+    -- CY snapshot windows
+    date_add(date_trunc('week', pr.comm_date), -7 * pr.comm_weeks_before) AS cy_pre_comm_start,
+    date_add(date_trunc('week', pr.comm_date), -1) AS cy_pre_comm_end,
+    
+    date_trunc('week', pr.comm_date) AS cy_post_comm_start,
+    date_add(date_trunc('week', pr.comm_date), 7 * pr.comm_weeks_after - 1) AS cy_post_comm_end,
+    
+    date_add(date_trunc('week', pr.rollout_date), -7 * pr.rollout_weeks_before) AS cy_pre_rollout_start,
+    date_add(date_trunc('week', pr.rollout_date), -1) AS cy_pre_rollout_end,
+    
+    date_trunc('week', pr.rollout_date) AS cy_post_rollout_start,
+    date_add(date_trunc('week', pr.rollout_date), 7 * pr.rollout_weeks_after - 1) AS cy_post_rollout_end,
+    
+    -- LY snapshot windows
+    date_add(date_trunc('week', add_months(pr.comm_date, -12)), -7 * pr.comm_weeks_before) AS ly_pre_comm_start,
+    date_add(date_trunc('week', add_months(pr.comm_date, -12)), -1) AS ly_pre_comm_end,
+    
+    date_trunc('week', add_months(pr.comm_date, -12)) AS ly_post_comm_start,
+    date_add(date_trunc('week', add_months(pr.comm_date, -12)), 7 * pr.comm_weeks_after - 1) AS ly_post_comm_end,
+    
+    date_add(date_trunc('week', add_months(pr.rollout_date, -12)), -7 * pr.rollout_weeks_before) AS ly_pre_rollout_start,
+    date_add(date_trunc('week', add_months(pr.rollout_date, -12)), -1) AS ly_pre_rollout_end,
+    
+    date_trunc('week', add_months(pr.rollout_date, -12)) AS ly_post_rollout_start,
+    date_add(date_trunc('week', add_months(pr.rollout_date, -12)), 7 * pr.rollout_weeks_after - 1) AS ly_post_rollout_end,
+    
+    -- CY travel date ranges from comm week start
+    date_trunc('week', pr.comm_date) AS cy_comm_travel_anchor,
+    add_months(date_trunc('week', pr.comm_date), 3) AS cy_comm_travel_3m_end,
+    add_months(date_trunc('week', pr.comm_date), 6) AS cy_comm_travel_6m_end,
+    add_months(date_trunc('week', pr.comm_date), 12) AS cy_comm_travel_12m_end,
+    
+    -- CY travel date ranges from rollout week start
+    date_trunc('week', pr.rollout_date) AS cy_rollout_travel_anchor,
+    add_months(date_trunc('week', pr.rollout_date), 3) AS cy_rollout_travel_3m_end,
+    add_months(date_trunc('week', pr.rollout_date), 6) AS cy_rollout_travel_6m_end,
+    add_months(date_trunc('week', pr.rollout_date), 12) AS cy_rollout_travel_12m_end,
+    
+    -- LY travel date ranges from comm week start
+    date_trunc('week', add_months(pr.comm_date, -12)) AS ly_comm_travel_anchor,
+    add_months(date_trunc('week', add_months(pr.comm_date, -12)), 3) AS ly_comm_travel_3m_end,
+    add_months(date_trunc('week', add_months(pr.comm_date, -12)), 6) AS ly_comm_travel_6m_end,
+    add_months(date_trunc('week', add_months(pr.comm_date, -12)), 12) AS ly_comm_travel_12m_end,
+    
+    -- LY travel date ranges from rollout week start
+    date_trunc('week', add_months(pr.rollout_date, -12)) AS ly_rollout_travel_anchor,
+    add_months(date_trunc('week', add_months(pr.rollout_date, -12)), 3) AS ly_rollout_travel_3m_end,
+    add_months(date_trunc('week', add_months(pr.rollout_date, -12)), 6) AS ly_rollout_travel_6m_end,
+    add_months(date_trunc('week', add_months(pr.rollout_date, -12)), 12) AS ly_rollout_travel_12m_end
+    
+  FROM v_inputs pr
 ),
 
 price_base AS (
@@ -44,96 +111,212 @@ price_base AS (
     p.final_price_black_per_adult,
     p.availability_timeslots,
 
-    dl.country_name
+    dl.country_name,
+    
+    dr.cy_pre_comm_start,
+    dr.cy_pre_comm_end,
+    dr.cy_post_comm_start,
+    dr.cy_post_comm_end,
+    dr.cy_pre_rollout_start,
+    dr.cy_pre_rollout_end,
+    dr.cy_post_rollout_start,
+    dr.cy_post_rollout_end,
+    dr.ly_pre_comm_start,
+    dr.ly_pre_comm_end,
+    dr.ly_post_comm_start,
+    dr.ly_post_comm_end,
+    dr.ly_pre_rollout_start,
+    dr.ly_pre_rollout_end,
+    dr.ly_post_rollout_start,
+    dr.ly_post_rollout_end,
+    
+    dr.cy_comm_travel_anchor,
+    dr.cy_comm_travel_3m_end,
+    dr.cy_comm_travel_6m_end,
+    dr.cy_comm_travel_12m_end,
+    dr.cy_rollout_travel_anchor,
+    dr.cy_rollout_travel_3m_end,
+    dr.cy_rollout_travel_6m_end,
+    dr.cy_rollout_travel_12m_end,
+    
+    dr.ly_comm_travel_anchor,
+    dr.ly_comm_travel_3m_end,
+    dr.ly_comm_travel_6m_end,
+    dr.ly_comm_travel_12m_end,
+    dr.ly_rollout_travel_anchor,
+    dr.ly_rollout_travel_3m_end,
+    dr.ly_rollout_travel_6m_end,
+    dr.ly_rollout_travel_12m_end,
+    
+    CASE
+      WHEN CAST(p.snapshot_date AS date) >= dr.cy_pre_comm_start 
+           AND CAST(p.snapshot_date AS date) <= dr.cy_post_rollout_end 
+        THEN 'CY'
+      WHEN CAST(p.snapshot_date AS date) >= dr.ly_pre_comm_start 
+           AND CAST(p.snapshot_date AS date) <= dr.ly_post_rollout_end 
+        THEN 'LY'
+    END AS period
+    
   FROM production.dwh.daily_tour_price_snapshot p
   INNER JOIN production.dwh.dim_tour dt
     ON p.tour_id = dt.tour_id
   INNER JOIN production.dwh.dim_location dl
     ON dt.location_id = dl.location_id
-  INNER JOIN tour_filter tf
-    ON p.tour_id = tf.tour_id
   CROSS JOIN date_ranges dr
+  CROSS JOIN filter_flags ff
+  LEFT JOIN tour_filter tf
+    ON p.tour_id = tf.tour_id
+  LEFT JOIN supplier_filter sf
+    ON dt.supplier_id = sf.supplier_id
   WHERE
-    upper(dl.country_name) = upper(dr.country)
+    LOWER(dl.country_name) = LOWER(dr.country)
+    AND (ff.should_filter_tours = 0 OR tf.tour_id IS NOT NULL)
+    AND (ff.should_filter_suppliers = 0 OR sf.supplier_id IS NOT NULL)
     AND (
-      (
-        CAST(p.snapshot_date AS date) BETWEEN date_add(dr.cy_comm_week_start, -7 * dr.x_weeks)
-                                        AND date_add(dr.cy_rollout_week_start, 7 * dr.x_weeks + 6)
-        AND CAST(p.snapshot_date AS date) BETWEEN dr.start_date AND dr.end_date
-      )
+      (CAST(p.snapshot_date AS date) >= dr.cy_pre_comm_start AND CAST(p.snapshot_date AS date) <= dr.cy_post_rollout_end)
       OR
-      (
-        CAST(p.snapshot_date AS date) BETWEEN date_add(dr.ly_comm_week_start, -7 * dr.x_weeks)
-                                        AND date_add(dr.ly_rollout_week_start, 7 * dr.x_weeks + 6)
-        AND CAST(p.snapshot_date AS date) BETWEEN add_months(dr.start_date, -12) AND add_months(dr.end_date, -12)
-      )
+      (CAST(p.snapshot_date AS date) >= dr.ly_pre_comm_start AND CAST(p.snapshot_date AS date) <= dr.ly_post_rollout_end)
     )
 ),
 
 windowed_daily AS (
+  -- PRE_COMM with travel dates anchored to comm week
   SELECT
-    pb.country_name,
-    CAST(date_trunc('week', CAST(pb.snapshot_dt AS timestamp)) AS date) AS snapshot_week_start,
-
-    pb.currency_iso_code,
-    pb.tour_id,
-    pb.tour_option_id,
-
-    pb.snapshot_dt,
-    pb.travel_dt,
-
-    datediff(pb.travel_dt, pb.snapshot_dt) AS days_ahead,
-
+    'PRE_COMM' AS window,
+    period,
+    country_name,
+    snapshot_dt,
+    travel_dt,
+    CAST(date_trunc('week', snapshot_dt) AS date) AS snapshot_week_start,
+    currency_iso_code,
+    tour_id,
+    tour_option_id,
+    
     CASE
-      WHEN pb.snapshot_dt BETWEEN date_add(dr.cy_comm_week_start, -7 * dr.x_weeks)
-                            AND date_add(dr.cy_rollout_week_start, 7 * dr.x_weeks + 6)
-        THEN 'CY'
-      WHEN pb.snapshot_dt BETWEEN date_add(dr.ly_comm_week_start, -7 * dr.x_weeks)
-                            AND date_add(dr.ly_rollout_week_start, 7 * dr.x_weeks + 6)
-        THEN 'LY'
-    END AS period,
-
+      WHEN travel_dt >= cy_comm_travel_anchor AND travel_dt < cy_comm_travel_3m_end THEN '3M'
+      WHEN travel_dt >= cy_comm_travel_3m_end AND travel_dt < cy_comm_travel_6m_end THEN '6M'
+      WHEN travel_dt >= cy_comm_travel_6m_end AND travel_dt <= cy_comm_travel_12m_end THEN '12M'
+      WHEN travel_dt >= ly_comm_travel_anchor AND travel_dt < ly_comm_travel_3m_end THEN '3M'
+      WHEN travel_dt >= ly_comm_travel_3m_end AND travel_dt < ly_comm_travel_6m_end THEN '6M'
+      WHEN travel_dt >= ly_comm_travel_6m_end AND travel_dt <= ly_comm_travel_12m_end THEN '12M'
+    END AS travel_period,
+    
+    final_price_red_per_adult,
+    final_price_black_per_adult,
+    
     CASE
-      -- CY
-      WHEN pb.snapshot_dt >= date_add(dr.cy_comm_week_start, -7 * dr.x_weeks)
-       AND pb.snapshot_dt <  dr.cy_comm_week_start
-        THEN 'PRE'
-      WHEN pb.snapshot_dt >= dr.cy_comm_week_start
-       AND pb.snapshot_dt <  dr.cy_rollout_week_start
-        THEN 'COMM'
-      WHEN pb.snapshot_dt >= dr.cy_rollout_week_start
-       AND pb.snapshot_dt <= date_add(dr.cy_rollout_week_start, 7 * dr.x_weeks + 6)
-        THEN 'POST'
-
-      -- LY
-      WHEN pb.snapshot_dt >= date_add(dr.ly_comm_week_start, -7 * dr.x_weeks)
-       AND pb.snapshot_dt <  dr.ly_comm_week_start
-        THEN 'PRE'
-      WHEN pb.snapshot_dt >= dr.ly_comm_week_start
-       AND pb.snapshot_dt <  dr.ly_rollout_week_start
-        THEN 'COMM'
-      WHEN pb.snapshot_dt >= dr.ly_rollout_week_start
-       AND pb.snapshot_dt <= date_add(dr.ly_rollout_week_start, 7 * dr.x_weeks + 6)
-        THEN 'POST'
-    END AS window,
-
-    CASE
-      WHEN datediff(pb.travel_dt, pb.snapshot_dt) BETWEEN 0 AND 14 THEN '0-14'
-      WHEN datediff(pb.travel_dt, pb.snapshot_dt) BETWEEN 15 AND 60 THEN '15-60'
-      WHEN datediff(pb.travel_dt, pb.snapshot_dt) BETWEEN 61 AND 180 THEN '61-180'
-      ELSE NULL
-    END AS lead_time_bucket,
-
-    pb.final_price_red_per_adult,
-    pb.final_price_black_per_adult,
-
-    CASE
-      WHEN pb.availability_timeslots IS NULL THEN 0
-      ELSE size(pb.availability_timeslots)
+      WHEN availability_timeslots IS NULL THEN 0
+      ELSE size(availability_timeslots)
     END AS timeslot_count
-
-  FROM price_base pb
-  CROSS JOIN date_ranges dr
+    
+  FROM price_base
+  WHERE (period = 'CY' AND snapshot_dt >= cy_pre_comm_start AND snapshot_dt <= cy_pre_comm_end)
+     OR (period = 'LY' AND snapshot_dt >= ly_pre_comm_start AND snapshot_dt <= ly_pre_comm_end)
+  
+  UNION ALL
+  
+  -- POST_COMM with travel dates anchored to comm week
+  SELECT
+    'POST_COMM' AS window,
+    period,
+    country_name,
+    snapshot_dt,
+    travel_dt,
+    CAST(date_trunc('week', snapshot_dt) AS date) AS snapshot_week_start,
+    currency_iso_code,
+    tour_id,
+    tour_option_id,
+    
+    CASE
+      WHEN travel_dt >= cy_comm_travel_anchor AND travel_dt < cy_comm_travel_3m_end THEN '3M'
+      WHEN travel_dt >= cy_comm_travel_3m_end AND travel_dt < cy_comm_travel_6m_end THEN '6M'
+      WHEN travel_dt >= cy_comm_travel_6m_end AND travel_dt <= cy_comm_travel_12m_end THEN '12M'
+      WHEN travel_dt >= ly_comm_travel_anchor AND travel_dt < ly_comm_travel_3m_end THEN '3M'
+      WHEN travel_dt >= ly_comm_travel_3m_end AND travel_dt < ly_comm_travel_6m_end THEN '6M'
+      WHEN travel_dt >= ly_comm_travel_6m_end AND travel_dt <= ly_comm_travel_12m_end THEN '12M'
+    END AS travel_period,
+    
+    final_price_red_per_adult,
+    final_price_black_per_adult,
+    
+    CASE
+      WHEN availability_timeslots IS NULL THEN 0
+      ELSE size(availability_timeslots)
+    END AS timeslot_count
+    
+  FROM price_base
+  WHERE (period = 'CY' AND snapshot_dt >= cy_post_comm_start AND snapshot_dt <= cy_post_comm_end)
+     OR (period = 'LY' AND snapshot_dt >= ly_post_comm_start AND snapshot_dt <= ly_post_comm_end)
+  
+  UNION ALL
+  
+  -- PRE_ROLLOUT with travel dates anchored to rollout week
+  SELECT
+    'PRE_ROLLOUT' AS window,
+    period,
+    country_name,
+    snapshot_dt,
+    travel_dt,
+    CAST(date_trunc('week', snapshot_dt) AS date) AS snapshot_week_start,
+    currency_iso_code,
+    tour_id,
+    tour_option_id,
+    
+    CASE
+      WHEN travel_dt >= cy_rollout_travel_anchor AND travel_dt < cy_rollout_travel_3m_end THEN '3M'
+      WHEN travel_dt >= cy_rollout_travel_3m_end AND travel_dt < cy_rollout_travel_6m_end THEN '6M'
+      WHEN travel_dt >= cy_rollout_travel_6m_end AND travel_dt <= cy_rollout_travel_12m_end THEN '12M'
+      WHEN travel_dt >= ly_rollout_travel_anchor AND travel_dt < ly_rollout_travel_3m_end THEN '3M'
+      WHEN travel_dt >= ly_rollout_travel_3m_end AND travel_dt < ly_rollout_travel_6m_end THEN '6M'
+      WHEN travel_dt >= ly_rollout_travel_6m_end AND travel_dt <= ly_rollout_travel_12m_end THEN '12M'
+    END AS travel_period,
+    
+    final_price_red_per_adult,
+    final_price_black_per_adult,
+    
+    CASE
+      WHEN availability_timeslots IS NULL THEN 0
+      ELSE size(availability_timeslots)
+    END AS timeslot_count
+    
+  FROM price_base
+  WHERE (period = 'CY' AND snapshot_dt >= cy_pre_rollout_start AND snapshot_dt <= cy_pre_rollout_end)
+     OR (period = 'LY' AND snapshot_dt >= ly_pre_rollout_start AND snapshot_dt <= ly_pre_rollout_end)
+  
+  UNION ALL
+  
+  -- POST_ROLLOUT with travel dates anchored to rollout week
+  SELECT
+    'POST_ROLLOUT' AS window,
+    period,
+    country_name,
+    snapshot_dt,
+    travel_dt,
+    CAST(date_trunc('week', snapshot_dt) AS date) AS snapshot_week_start,
+    currency_iso_code,
+    tour_id,
+    tour_option_id,
+    
+    CASE
+      WHEN travel_dt >= cy_rollout_travel_anchor AND travel_dt < cy_rollout_travel_3m_end THEN '3M'
+      WHEN travel_dt >= cy_rollout_travel_3m_end AND travel_dt < cy_rollout_travel_6m_end THEN '6M'
+      WHEN travel_dt >= cy_rollout_travel_6m_end AND travel_dt <= cy_rollout_travel_12m_end THEN '12M'
+      WHEN travel_dt >= ly_rollout_travel_anchor AND travel_dt < ly_rollout_travel_3m_end THEN '3M'
+      WHEN travel_dt >= ly_rollout_travel_3m_end AND travel_dt < ly_rollout_travel_6m_end THEN '6M'
+      WHEN travel_dt >= ly_rollout_travel_6m_end AND travel_dt <= ly_rollout_travel_12m_end THEN '12M'
+    END AS travel_period,
+    
+    final_price_red_per_adult,
+    final_price_black_per_adult,
+    
+    CASE
+      WHEN availability_timeslots IS NULL THEN 0
+      ELSE size(availability_timeslots)
+    END AS timeslot_count
+    
+  FROM price_base
+  WHERE (period = 'CY' AND snapshot_dt >= cy_post_rollout_start AND snapshot_dt <= cy_post_rollout_end)
+     OR (period = 'LY' AND snapshot_dt >= ly_post_rollout_start AND snapshot_dt <= ly_post_rollout_end)
 ),
 
 weekly_metrics AS (
@@ -143,7 +326,7 @@ weekly_metrics AS (
     window,
     snapshot_week_start,
     currency_iso_code,
-    lead_time_bucket,
+    travel_period,
 
     COUNT(*) AS wk_rows,
     COUNT(DISTINCT tour_id) AS wk_tours,
@@ -155,7 +338,7 @@ weekly_metrics AS (
   FROM windowed_daily
   WHERE period IS NOT NULL
     AND window IS NOT NULL
-    AND lead_time_bucket IS NOT NULL
+    AND travel_period IS NOT NULL
     AND final_price_red_per_adult IS NOT NULL
     AND final_price_red_per_adult > 0
   GROUP BY 1,2,3,4,5,6
@@ -167,7 +350,7 @@ window_level AS (
     country_name,
     window,
     currency_iso_code,
-    lead_time_bucket,
+    travel_period,
 
     COUNT(DISTINCT snapshot_week_start) AS weeks_in_window,
 
@@ -189,21 +372,21 @@ pivoted AS (
     window,
     currency_iso_code,
 
-    MAX(CASE WHEN lead_time_bucket = '0-14'  THEN weeks_in_window END) AS weeks_0_14,
-    MAX(CASE WHEN lead_time_bucket = '15-60' THEN weeks_in_window END) AS weeks_15_60,
-    MAX(CASE WHEN lead_time_bucket = '61-180' THEN weeks_in_window END) AS weeks_61_180,
+    MAX(CASE WHEN travel_period = '3M'  THEN weeks_in_window END) AS weeks_3m,
+    MAX(CASE WHEN travel_period = '6M'  THEN weeks_in_window END) AS weeks_6m,
+    MAX(CASE WHEN travel_period = '12M' THEN weeks_in_window END) AS weeks_12m,
 
-    MAX(CASE WHEN lead_time_bucket = '0-14'  THEN window_median_red_price_per_adult END)   AS red_med_0_14,
-    MAX(CASE WHEN lead_time_bucket = '15-60' THEN window_median_red_price_per_adult END)   AS red_med_15_60,
-    MAX(CASE WHEN lead_time_bucket = '61-180' THEN window_median_red_price_per_adult END)  AS red_med_61_180,
+    MAX(CASE WHEN travel_period = '3M'  THEN window_median_red_price_per_adult END)   AS red_med_3m,
+    MAX(CASE WHEN travel_period = '6M'  THEN window_median_red_price_per_adult END)   AS red_med_6m,
+    MAX(CASE WHEN travel_period = '12M' THEN window_median_red_price_per_adult END)   AS red_med_12m,
 
-    MAX(CASE WHEN lead_time_bucket = '0-14'  THEN window_median_black_price_per_adult END)  AS black_med_0_14,
-    MAX(CASE WHEN lead_time_bucket = '15-60' THEN window_median_black_price_per_adult END)  AS black_med_15_60,
-    MAX(CASE WHEN lead_time_bucket = '61-180' THEN window_median_black_price_per_adult END) AS black_med_61_180,
+    MAX(CASE WHEN travel_period = '3M'  THEN window_median_black_price_per_adult END)  AS black_med_3m,
+    MAX(CASE WHEN travel_period = '6M'  THEN window_median_black_price_per_adult END)  AS black_med_6m,
+    MAX(CASE WHEN travel_period = '12M' THEN window_median_black_price_per_adult END)  AS black_med_12m,
 
-    MAX(CASE WHEN lead_time_bucket = '0-14'  THEN window_median_timeslots END) AS timeslots_med_0_14,
-    MAX(CASE WHEN lead_time_bucket = '15-60' THEN window_median_timeslots END) AS timeslots_med_15_60,
-    MAX(CASE WHEN lead_time_bucket = '61-180' THEN window_median_timeslots END) AS timeslots_med_61_180
+    MAX(CASE WHEN travel_period = '3M'  THEN window_median_timeslots END) AS timeslots_med_3m,
+    MAX(CASE WHEN travel_period = '6M'  THEN window_median_timeslots END) AS timeslots_med_6m,
+    MAX(CASE WHEN travel_period = '12M' THEN window_median_timeslots END) AS timeslots_med_12m
 
   FROM window_level
   GROUP BY 1,2,3,4
@@ -212,7 +395,12 @@ pivoted AS (
 SELECT *
 FROM pivoted
 ORDER BY
-  period,
   country_name,
-  CASE window WHEN 'PRE' THEN 1 WHEN 'COMM' THEN 2 WHEN 'POST' THEN 3 ELSE 9 END,
+  period,
+  CASE window 
+    WHEN 'PRE_COMM' THEN 1 
+    WHEN 'POST_COMM' THEN 2 
+    WHEN 'PRE_ROLLOUT' THEN 3 
+    WHEN 'POST_ROLLOUT' THEN 4 
+  END,
   currency_iso_code;
