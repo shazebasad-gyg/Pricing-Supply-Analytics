@@ -1,0 +1,19 @@
+# This is a Databricks asset bundle definition for Pricing-Supply-Analytics.
+# The Databricks extension requires databricks.yml configuration file.
+# See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
+
+bundle:
+  name: Pricing-Supply-Analytics
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-d10db17d-b6c4.cloud.databricks.com
+
+  ## Optionally, there could be 'staging' or 'prod' targets here.
+  #
+  # prod:
+  #   workspace:
+  #     host: https://dbc-d10db17d-b6c4.cloud.databricks.com
