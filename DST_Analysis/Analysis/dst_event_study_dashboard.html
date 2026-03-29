@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DST Pass-Through — Impact Analysis</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.1.0/dist/chartjs-plugin-annotation.min.js"></script>
+<style>
+:root {
+  --bg: #0b0d13; --surface: #13151e; --card: #181b27; --border: #252838;
+  --text: #e8eaf0; --muted: #7c8097; --dim: #4a4e64;
+  --cyan: #38bdf8; --orange: #fb923c; --green: #34d399; --red: #f87171;
+  --blue: #60a5fa; --purple: #a78bfa; --yellow: #fbbf24;
+  --cyan-bg: rgba(56,189,248,.07); --orange-bg: rgba(251,146,60,.07);
+  --green-bg: rgba(52,211,153,.06); --red-bg: rgba(248,113,113,.06);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:13px;line-height:1.5}
+
+/* Header */
+.header{padding:24px 36px 0;display:flex;justify-content:space-between;align-items:flex-start}
+.header-left h1{font-size:20px;font-weight:700;letter-spacing:-.3px}
+.header-left p{color:var(--muted);font-size:12px;margin-top:2px}
+.header-right{display:flex;gap:10px;align-items:center;margin-top:4px}
+.param-chip{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:4px 12px;font-size:11px;color:var(--muted)}
+.param-chip b{color:var(--text);font-weight:600}
+
+/* Tabs */
+.tabs{display:flex;gap:0;padding:16px 36px 0;border-bottom:1px solid var(--border)}
+.tab{padding:8px 20px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:.15s}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--cyan);border-bottom-color:var(--cyan)}
+
+/* Sections */
+.view{display:none;padding:20px 36px 40px}
+.view.active{display:block}
+.section{margin-bottom:28px}
+.section-header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.section-icon{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px}
+.section-title{font-size:14px;font-weight:700;letter-spacing:-.2px}
+.section-subtitle{font-size:11px;color:var(--muted);margin-left:auto}
+
+/* KPI strip */
+.kpi-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:24px}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+.kpi .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:600}
+.kpi .val{font-size:22px;font-weight:700;margin-top:4px}
+.kpi .sub{font-size:11px;margin-top:2px}
+.kpi .sub.pos{color:var(--green)}.kpi .sub.neg{color:var(--red)}.kpi .sub.neu{color:var(--muted)}
+.kpi .detail{font-size:10px;color:var(--dim);margin-top:4px}
+
+/* DID table */
+.did-table-wrap{overflow-x:auto}
+table.did{width:100%;border-collapse:collapse;font-size:12px}
+table.did th{text-align:left;padding:8px 12px;color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid var(--border);white-space:nowrap}
+table.did td{padding:8px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+table.did tr:hover td{background:rgba(255,255,255,.02)}
+table.did .metric-name{font-weight:600;color:var(--text)}
+table.did .num{text-align:right;font-variant-numeric:tabular-nums}
+table.did .pos{color:var(--green);font-weight:600}
+table.did .neg{color:var(--red);font-weight:600}
+table.did .col-divider{border-left:2px solid var(--border)}
+table.did .highlight-col{background:rgba(56,189,248,.04)}
+
+/* Chart grid */
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:4px}
+.chart-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 18px}
+.chart-card h4{font-size:13px;font-weight:600;margin-bottom:2px}
+.chart-card .chart-sub{font-size:10px;color:var(--muted);margin-bottom:10px}
+.chart-card canvas{width:100%!important;height:220px!important}
+
+/* Legend */
+.legend-strip{display:flex;gap:18px;margin-bottom:14px;padding:8px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;width:fit-content}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+.legend-dot{width:10px;height:10px;border-radius:50%}
+.legend-line{width:16px;height:0;border-top:2px dashed}
+
+/* Method note */
+.method-note{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:11px;color:var(--muted);line-height:1.6}
+.method-note b{color:var(--text)}
+
+/* Footer */
+.footer{text-align:center;padding:20px;color:var(--dim);font-size:10px;border-top:1px solid var(--border)}
+
+@media(max-width:900px){
+  .kpi-strip{grid-template-columns:repeat(3,1fr)}
+  .chart-row{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>DST Pass-Through — Impact Analysis</h1>
+    <p>Pre/Post comparison with YoY correction &middot; Booking-date view</p>
+  </div>
+  <div class="header-right">
+    <div class="param-chip"><b>Country:</b> Germany</div>
+    <div class="param-chip"><b>Event:</b> 2026-01-16</div>
+    <div class="param-chip"><b>Window:</b> 4 wks pre / 4 wks post</div>
+    <div class="param-chip"><b>Benchmark:</b> YoY (Option 2)</div>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('agg')">Aggregated Pre/Post</div>
+  <div class="tab" onclick="switchTab('weekly')">Weekly Event Study</div>
+</div>
+
+<!-- ===== AGGREGATED VIEW ===== -->
+<div class="view active" id="view-agg">
+
+  <div class="method-note">
+    <b>Methodology — YoY with pre-trend adjustment (Option 2):</b>
+    We compare CY (current year) pre/post performance against LY (last year) pre/post for the same calendar window.
+    The <b>YoY-Corrected Change</b> isolates the policy impact by subtracting the baseline seasonal shift:
+    <b>YoY-Corrected &Delta; = (Post<sub>CY</sub> &minus; Pre<sub>CY</sub>) &minus; (Post<sub>LY</sub> &minus; Pre<sub>LY</sub>)</b>.
+    A negative value suggests the policy change drove an incremental decline beyond normal seasonality.
+  </div>
+
+  <!-- KPI strip -->
+  <div class="kpi-strip" id="agg-kpi"></div>
+
+  <!-- Section: Revenue & Demand -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-icon" style="background:var(--cyan-bg);color:var(--cyan)">$</div>
+      <div class="section-title">Revenue & Demand</div>
+      <div class="section-subtitle">Primary realized metrics &middot; Booking-date view</div>
+    </div>
+    <div class="did-table-wrap"><table class="did" id="tbl-revenue"></table></div>
+  </div>
+
+  <!-- Section: Pricing & Competitiveness -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(167,139,250,.08);color:var(--purple)">&#x2696;</div>
+      <div class="section-title">Pricing & Competitiveness</div>
+      <div class="section-subtitle">Detect price pass-through and parity deterioration</div>
+    </div>
+    <div class="did-table-wrap"><table class="did" id="tbl-pricing"></table></div>
+  </div>
+
+  <!-- Section: Supply Health -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-icon" style="background:var(--green-bg);color:var(--green)">&#x26A1;</div>
+      <div class="section-title">Supply Health</div>
+      <div class="section-subtitle">Extensive &amp; intensive margin — supplier &amp; tour availability</div>
+    </div>
+    <div class="did-table-wrap"><table class="did" id="tbl-supply"></table></div>
+  </div>
+
+  <!-- Section: Quality Guardrails -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-icon" style="background:var(--red-bg);color:var(--red)">&#x26A0;</div>
+      <div class="section-title">Quality Guardrails</div>
+      <div class="section-subtitle">Customer outcomes — cancellations and conversion</div>
+    </div>
+    <div class="did-table-wrap"><table class="did" id="tbl-quality"></table></div>
+  </div>
+
+</div>
+
+<!-- ===== WEEKLY EVENT STUDY VIEW ===== -->
+<div class="view" id="view-weekly">
+
+  <div class="method-note">
+    <b>Event Study — Weekly Trends:</b>
+    Each metric is plotted weekly for CY and LY, aligned by <b>week index</b> relative to the policy change date (week 0).
+    Weeks &lt; 0 are pre-event; weeks &ge; 0 are post-event. The vertical dashed line marks the policy change.
+    Divergence between CY and LY after the event line suggests policy-driven impact beyond seasonal norms.
+  </div>
+
+  <div class="legend-strip">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div> CY (2026)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> LY (2025)</div>
+    <div class="legend-item"><div style="width:16px;border-top:2px dashed var(--red);height:0"></div> Policy Change</div>
+  </div>
+
+  <!-- Section: Revenue & Demand -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-icon" style="background:var(--cyan-bg);color:var(--cyan)">$</div>
+      <div class="section-title">Revenue & Demand</div>
+      <div class="section-subtitle">NR, bookings, and GMV trajectories around the event</div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-card">
+        <h4>Net Revenue (EUR)</h4>
+        <div class="chart-sub">Weekly NR — does CY diverge from LY trend post-event?</div>
+        <canvas id="wk-nr"></canvas>
+      </div>
+      <div class="chart-card">
+        <h4>Bookings</h4>
+        <div class="chart-sub">Weekly booking count — volume impact signal</div>
+        <canvas id="wk-bookings"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section: Pricing & Competitiveness -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-icon" style="background:rgba(167,139,250,.08);color:var(--purple)">&#x2696;</div>
+      <div class="section-title">Pricing & Competitiveness</div>
+      <div class="section-subtitle">Are suppliers passing through cost via higher prices? Is parity breaking?</div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-card">
+        <h4>Median Final Red Price (3M Horizon)</h4>
+        <div class="chart-sub">Weekly median price per adult for travel dates in the next 3 months</div>
+        <canvas id="wk-price"></canvas>
+      </div>
+      <div class="chart-card">
+        <h4>Overall Price Parity Rate</h4>
+        <div class="chart-sub">% of impressions where GYG price &le; competitor (meet + beat)</div>
+        <canvas id="wk-parity"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section: Supply Health -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-icon" style="background:var(--green-bg);color:var(--green)">&#x26A1;</div>
+      <div class="section-title">Supply Health</div>
+      <div class="section-subtitle">Are suppliers reducing participation or availability after the policy change?</div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-card">
+        <h4>Share of Active Tours (%)</h4>
+        <div class="chart-sub">Extensive margin — % of tours with &ge;1 online day per week</div>
+        <canvas id="wk-active-tours"></canvas>
+      </div>
+      <div class="chart-card">
+        <h4>Avg Days Online per Tour per Week</h4>
+        <div class="chart-sub">Intensive margin — availability commitment per tour</div>
+        <canvas id="wk-days-online"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section: Quality Guardrails -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-icon" style="background:var(--red-bg);color:var(--red)">&#x26A0;</div>
+      <div class="section-title">Quality Guardrails</div>
+      <div class="section-subtitle">Customer outcome signals — are cancellations or conversion deteriorating?</div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-card">
+        <h4>Cancellation Rate (%)</h4>
+        <div class="chart-sub">Cancelled bookings / total bookings — spike = quality concern</div>
+        <canvas id="wk-cancel"></canvas>
+      </div>
+      <div class="chart-card">
+        <h4>Conversion Rate (%)</h4>
+        <div class="chart-sub">Customers / visitors — demand-side health check</div>
+        <canvas id="wk-conversion"></canvas>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  DST Pass-Through Impact Analysis &middot; Data from DST_Analysis weekly & aggregated SQL queries &middot; YoY benchmark (Option 2)
+</div>
+
+<script>
+/* ── Tab switching ── */
+function switchTab(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + id).classList.add('active');
+  document.querySelector(`.tab[onclick*="${id}"]`).classList.add('active');
+}
+
+/* ── Mock data (replace with real query results) ── */
+const AGG = {
+  revenue: [
+    { metric: 'Net Revenue (EUR)',         preLY: 312000, postLY: 328000, preCY: 370000, postCY: 375000, fmt: 'eur' },
+    { metric: 'Bookings',                  preLY: 4200,   postLY: 4450,   preCY: 5100,   postCY: 5180,   fmt: 'int' },
+    { metric: 'GMV (EUR)',                 preLY: 520000, postLY: 548000, preCY: 625000, postCY: 636000, fmt: 'eur' },
+    { metric: 'Tickets',                   preLY: 8900,   postLY: 9400,   preCY: 10800,  postCY: 10950,  fmt: 'int' },
+    { metric: 'Avg NR per Booking (EUR)',  preLY: 74.3,   postLY: 73.7,   preCY: 72.5,   postCY: 72.4,   fmt: 'eur2' },
+    { metric: 'Avg GMV per Ticket (EUR)',  preLY: 58.4,   postLY: 58.3,   preCY: 57.9,   postCY: 58.1,   fmt: 'eur2' },
+    { metric: 'Visitors',                  preLY: 152000, postLY: 158000, preCY: 178000, postCY: 179500, fmt: 'int' },
+  ],
+  pricing: [
+    { metric: 'Median Red Price 3M (EUR)', preLY: 26.5, postLY: 26.8, preCY: 29.0, postCY: 31.5, fmt: 'eur2' },
+    { metric: 'Median Red Price 6M (EUR)', preLY: 27.1, postLY: 27.3, preCY: 29.8, postCY: 31.9, fmt: 'eur2' },
+    { metric: 'Overall Parity Rate (%)',   preLY: 70.5, postLY: 70.3, preCY: 72.2, postCY: 68.5, fmt: 'pct1' },
+    { metric: 'Supplier Parity Rate (%)',  preLY: 64.0, postLY: 63.8, preCY: 65.8, postCY: 61.2, fmt: 'pct1' },
+    { metric: 'Median Timeslots 3M',       preLY: 5.2,  postLY: 5.3,  preCY: 5.4,  postCY: 5.1,  fmt: 'dec1' },
+  ],
+  supply: [
+    { metric: 'Active Tours',              preLY: 3850,  postLY: 3880,  preCY: 4200,  postCY: 4120,  fmt: 'int' },
+    { metric: 'Share Active Tours (%)',    preLY: 86.5,  postLY: 86.8,  preCY: 88.2,  postCY: 85.5,  fmt: 'pct1' },
+    { metric: 'Active Suppliers',           preLY: 1420,  postLY: 1435,  preCY: 1580,  postCY: 1545,  fmt: 'int' },
+    { metric: 'Share Active Suppliers (%)',preLY: 90.1,  postLY: 90.3,  preCY: 91.6,  postCY: 88.9,  fmt: 'pct1' },
+    { metric: 'Avg Days Online / Tour',    preLY: 5.8,   postLY: 5.9,   preCY: 6.1,   postCY: 5.5,   fmt: 'dec1' },
+    { metric: 'Avg Days Online / Supplier',preLY: 5.9,   postLY: 6.0,   preCY: 6.2,   postCY: 5.7,   fmt: 'dec1' },
+  ],
+  quality: [
+    { metric: 'Cancellation Rate (%)',     preLY: 4.5, postLY: 4.4, preCY: 4.1, postCY: 5.6,  fmt: 'pct1', invert: true },
+    { metric: 'Cancellation Rate NR (%)',  preLY: 3.8, postLY: 3.7, preCY: 3.5, postCY: 4.8,  fmt: 'pct1', invert: true },
+    { metric: 'Conversion Rate (%)',       preLY: 2.8, postLY: 2.8, preCY: 2.9, postCY: 2.7,  fmt: 'pct1' },
+    { metric: 'Click-Through Rate (%)',    preLY: 12.1,postLY: 12.3,preCY: 12.5,postCY: 11.8, fmt: 'pct1' },
+    { metric: 'Add-to-Cart Rate (%)',      preLY: 8.0, postLY: 8.1, preCY: 8.4, postCY: 7.9,  fmt: 'pct1' },
+  ],
+};
+
+const WEEKS = ['-4','-3','-2','-1','0','+1','+2','+3'];
+
+const WK = {
+  nr:          { cy:[82000,84000,85500,86000,91000,93000,94500,95000], ly:[72000,73000,74000,74500,76000,77500,78000,78500] },
+  bookings:    { cy:[1180,1210,1250,1260,1290,1310,1300,1280],        ly:[1020,1040,1060,1080,1100,1120,1110,1105] },
+  price:       { cy:[28.5,28.8,29.0,29.2,31.5,31.8,32.0,31.6],       ly:[26.2,26.4,26.5,26.3,26.5,26.8,26.6,26.7] },
+  parity:      { cy:[72.1,71.8,72.5,72.0,68.3,69.1,70.5,71.2],       ly:[70.5,70.8,70.2,70.6,70.4,70.7,70.3,70.5] },
+  activeTours: { cy:[88.2,88.5,88.0,88.3,85.1,86.0,87.2,87.8],       ly:[86.5,86.8,86.3,86.7,86.5,86.9,86.4,86.6] },
+  daysOnline:  { cy:[6.1,6.2,6.0,6.1,5.5,5.7,5.9,6.0],              ly:[5.8,5.9,5.8,5.9,5.8,5.9,5.8,5.9] },
+  cancel:      { cy:[4.2,4.1,4.3,4.0,5.8,5.5,5.1,4.8],              ly:[4.5,4.4,4.6,4.3,4.4,4.5,4.3,4.4] },
+  conversion:  { cy:[3.1,3.2,3.0,3.1,2.7,2.8,2.9,3.0],              ly:[2.9,2.8,2.9,2.8,2.8,2.9,2.8,2.9] },
+};
+
+/* ── Formatters ── */
+const FMT = {
+  eur:  v => '€' + Math.round(v).toLocaleString(),
+  eur2: v => '€' + v.toFixed(2),
+  int:  v => Math.round(v).toLocaleString(),
+  pct1: v => v.toFixed(1) + '%',
+  dec1: v => v.toFixed(1),
+};
+
+function fmtDelta(v, fmt, invert) {
+  const isRate = ['pct1'].includes(fmt);
+  let str;
+  if (isRate) {
+    str = (v >= 0 ? '+' : '') + v.toFixed(2) + ' pp';
+  } else if (fmt === 'dec1') {
+    str = (v >= 0 ? '+' : '') + v.toFixed(2);
+  } else if (fmt === 'eur2') {
+    str = (v >= 0 ? '+' : '') + '€' + v.toFixed(2);
+  } else {
+    const pct = v;
+    str = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+  }
+  const good = invert ? v < 0 : v > 0;
+  const bad  = invert ? v > 0 : v < 0;
+  const cls = Math.abs(v) < 0.005 ? '' : (good ? 'pos' : (bad ? 'neg' : ''));
+  return { str, cls };
+}
+
+/* ── Aggregated KPIs ── */
+function renderAggKPIs() {
+  const kpis = [
+    { label: 'Net Revenue', section: 'revenue', idx: 0 },
+    { label: 'Bookings',    section: 'revenue', idx: 1 },
+    { label: 'Parity Rate', section: 'pricing', idx: 2 },
+    { label: 'Active Tours Share', section: 'supply', idx: 1 },
+    { label: 'Cancellation Rate', section: 'quality', idx: 0 },
+  ];
+  const html = kpis.map(k => {
+    const row = AGG[k.section][k.idx];
+    const rawCY = row.postCY - row.preCY;
+    const rawLY = row.postLY - row.preLY;
+    const isRate = ['pct1'].includes(row.fmt);
+    let didVal, didFmt;
+    if (isRate || row.fmt === 'dec1') {
+      didVal = rawCY - rawLY;
+      didFmt = fmtDelta(didVal, row.fmt, row.invert);
+    } else {
+      const pctCY = rawCY / Math.abs(row.preCY) * 100;
+      const pctLY = rawLY / Math.abs(row.preLY) * 100;
+      didVal = pctCY - pctLY;
+      didFmt = fmtDelta(didVal, row.fmt, row.invert);
+    }
+    const postCYFmt = FMT[row.fmt](row.postCY);
+    return `<div class="kpi">
+      <div class="lbl">${k.label}</div>
+      <div class="val">${postCYFmt}</div>
+      <div class="sub ${didFmt.cls}">YoY-Corrected: ${didFmt.str}</div>
+      <div class="detail">Post CY value shown above</div>
+    </div>`;
+  }).join('');
+  document.getElementById('agg-kpi').innerHTML = html;
+}
+
+/* ── DID Tables ── */
+function renderDIDTable(tableId, rows) {
+  const thead = `<thead><tr>
+    <th>Metric</th>
+    <th class="num">Pre LY</th><th class="num">Post LY</th><th class="num">LY &Delta;</th>
+    <th class="num col-divider">Pre CY</th><th class="num">Post CY</th><th class="num">CY &Delta;</th>
+    <th class="num col-divider highlight-col">YoY-Corrected &Delta;</th>
+  </tr></thead>`;
+
+  const tbody = rows.map(row => {
+    const f = FMT[row.fmt];
+    const rawLY = row.postLY - row.preLY;
+    const rawCY = row.postCY - row.preCY;
+    const isRate = ['pct1','dec1'].includes(row.fmt);
+
+    let lyDelta, cyDelta, didDelta;
+    if (isRate || row.fmt === 'eur2') {
+      lyDelta = fmtDelta(rawLY, row.fmt, row.invert);
+      cyDelta = fmtDelta(rawCY, row.fmt, row.invert);
+      didDelta = fmtDelta(rawCY - rawLY, row.fmt, row.invert);
+    } else {
+      const lyPct = rawLY / Math.abs(row.preLY) * 100;
+      const cyPct = rawCY / Math.abs(row.preCY) * 100;
+      lyDelta = fmtDelta(lyPct, row.fmt, row.invert);
+      cyDelta = fmtDelta(cyPct, row.fmt, row.invert);
+      didDelta = fmtDelta(cyPct - lyPct, row.fmt, row.invert);
+    }
+
+    return `<tr>
+      <td class="metric-name">${row.metric}</td>
+      <td class="num">${f(row.preLY)}</td>
+      <td class="num">${f(row.postLY)}</td>
+      <td class="num ${lyDelta.cls}">${lyDelta.str}</td>
+      <td class="num col-divider">${f(row.preCY)}</td>
+      <td class="num">${f(row.postCY)}</td>
+      <td class="num ${cyDelta.cls}">${cyDelta.str}</td>
+      <td class="num col-divider highlight-col ${didDelta.cls}">${didDelta.str}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById(tableId).innerHTML = thead + '<tbody>' + tbody + '</tbody>';
+}
+
+/* ── Weekly charts ── */
+const CY_C = '#38bdf8', LY_C = '#fb923c';
+const CY_F = 'rgba(56,189,248,.06)', LY_F = 'rgba(251,146,60,.06)';
+
+function makeChart(canvasId, ds, formatter) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: WEEKS,
+      datasets: [
+        { label:'CY', data:ds.cy, borderColor:CY_C, backgroundColor:CY_F, fill:true, tension:.3, pointRadius:4, pointHoverRadius:6, borderWidth:2.5 },
+        { label:'LY', data:ds.ly, borderColor:LY_C, backgroundColor:LY_F, fill:true, tension:.3, pointRadius:4, pointHoverRadius:6, borderWidth:2.5, borderDash:[6,3] },
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:'index', intersect:false },
+      plugins: {
+        legend:{ display:false },
+        tooltip:{ backgroundColor:'#181b27', borderColor:'#252838', borderWidth:1, titleColor:'#e8eaf0', bodyColor:'#e8eaf0', padding:10,
+          callbacks:{ label: ctx => ctx.dataset.label + ': ' + formatter(ctx.parsed.y) }
+        },
+        annotation: {
+          annotations: {
+            eventLine: { type:'line', xMin:4, xMax:4, borderColor:'rgba(248,113,113,.5)', borderWidth:2, borderDash:[6,4],
+              label:{ display:true, content:'Policy Change', position:'start', backgroundColor:'rgba(248,113,113,.12)', color:'#f87171', font:{size:9,weight:'600'}, padding:3 }
+            },
+            preBg:  { type:'box', xMin:-.5, xMax:3.5, backgroundColor:'rgba(52,211,153,.02)', borderWidth:0 },
+            postBg: { type:'box', xMin:3.5, xMax:7.5, backgroundColor:'rgba(248,113,113,.02)', borderWidth:0 },
+          }
+        }
+      },
+      scales: {
+        x:{ title:{display:true,text:'Week Relative to Policy Change',color:'#7c8097',font:{size:10}}, grid:{color:'rgba(255,255,255,.03)'}, ticks:{color:'#7c8097',font:{size:10}} },
+        y:{ grid:{color:'rgba(255,255,255,.03)'}, ticks:{color:'#7c8097',font:{size:10}, callback:v=>formatter(v)} }
+      }
+    }
+  });
+}
+
+/* ── Init ── */
+renderAggKPIs();
+renderDIDTable('tbl-revenue', AGG.revenue);
+renderDIDTable('tbl-pricing', AGG.pricing);
+renderDIDTable('tbl-supply',  AGG.supply);
+renderDIDTable('tbl-quality', AGG.quality);
+
+makeChart('wk-nr',           WK.nr,          v => '€'+Math.round(v/1000)+'k');
+makeChart('wk-bookings',     WK.bookings,    v => v.toLocaleString());
+makeChart('wk-price',        WK.price,       v => '€'+v.toFixed(1));
+makeChart('wk-parity',       WK.parity,      v => v.toFixed(1)+'%');
+makeChart('wk-active-tours', WK.activeTours, v => v.toFixed(1)+'%');
+makeChart('wk-days-online',  WK.daysOnline,  v => v.toFixed(1));
+makeChart('wk-cancel',       WK.cancel,      v => v.toFixed(1)+'%');
+makeChart('wk-conversion',   WK.conversion,  v => v.toFixed(1)+'%');
+</script>
+</body>
+</html>
