@@ -1,339 +1,159 @@
 WITH v_inputs AS (
   SELECT
-    CAST(:comm_date          AS DATE)   AS comm_date,
-    CAST(:rollout_date       AS DATE)   AS rollout_date,
-    CAST(:country            AS STRING) AS country,
-    CAST(:tour_ids           AS STRING) AS tour_ids,
-    CAST(:supplier_ids       AS STRING) AS supplier_ids,
-    CAST(:comm_weeks_before   AS INT)    AS comm_weeks_before,
-    CAST(:comm_weeks_after    AS INT)    AS comm_weeks_after,
-    CAST(:rollout_weeks_before  AS INT)    AS rollout_weeks_before,
-    CAST(:rollout_weeks_after   AS INT)    AS rollout_weeks_after
+    CAST(:comm_date AS DATE) AS comm_date,
+    CAST(:rollout_date AS DATE) AS rollout_date,
+    CAST(:comm_weeks_before AS INT) AS comm_weeks_before,
+    CAST(:comm_weeks_after AS INT) AS comm_weeks_after,
+    CAST(:rollout_weeks_before AS INT) AS rollout_weeks_before,
+    CAST(:rollout_weeks_after AS INT) AS rollout_weeks_after,
+    CAST(:filter_tours AS INT) AS filter_tours,
+    CAST(:filter_suppliers AS INT) AS filter_suppliers,
+    CAST(:filter_countries AS INT) AS filter_countries
 ),
 
-tour_filter AS (
-  SELECT CAST(trim(value) AS BIGINT) AS tour_id
-  FROM v_inputs
-  LATERAL VIEW explode(split(tour_ids, ',')) AS value
-  WHERE tour_ids != '' AND trim(value) != ''
-),
-
-supplier_filter AS (
-  SELECT CAST(trim(value) AS BIGINT) AS supplier_id
-  FROM v_inputs
-  LATERAL VIEW explode(split(supplier_ids, ',')) AS value
-  WHERE supplier_ids != '' AND trim(value) != ''
-),
-
-filter_flags AS (
-  SELECT 
-    CASE WHEN COALESCE(tour_ids, '') = '' THEN 0 ELSE 1 END AS should_filter_tours,
-    CASE WHEN COALESCE(supplier_ids, '') = '' THEN 0 ELSE 1 END AS should_filter_suppliers
-  FROM v_inputs
-),
-
-date_ranges AS (
+date_bounds AS (
   SELECT
-    date_trunc('week', pr.comm_date) AS cy_comm_week_start,
-    date_trunc('week', pr.rollout_date) AS cy_rollout_week_start,
-    date_trunc('week', add_months(pr.comm_date, -12)) AS ly_comm_week_start,
-    date_trunc('week', add_months(pr.rollout_date, -12)) AS ly_rollout_week_start,
-
-    pr.country,
-    pr.comm_weeks_before,
-    pr.comm_weeks_after,
-    pr.rollout_weeks_before,
-    pr.rollout_weeks_after,
-    
-    -- CY windows
-    date_add(date_trunc('week', pr.comm_date), -7 * pr.comm_weeks_before) AS cy_pre_comm_start,
-    date_add(date_trunc('week', pr.comm_date), -1) AS cy_pre_comm_end,
-    
-    date_trunc('week', pr.comm_date) AS cy_post_comm_start,
-    date_add(date_trunc('week', pr.comm_date), 7 * pr.comm_weeks_after - 1) AS cy_post_comm_end,
-    
-    date_add(date_trunc('week', pr.rollout_date), -7 * pr.rollout_weeks_before) AS cy_pre_rollout_start,
-    date_add(date_trunc('week', pr.rollout_date), -1) AS cy_pre_rollout_end,
-    
-    date_trunc('week', pr.rollout_date) AS cy_post_rollout_start,
-    date_add(date_trunc('week', pr.rollout_date), 7 * pr.rollout_weeks_after - 1) AS cy_post_rollout_end,
-    
-    -- LY windows
-    date_add(date_trunc('week', add_months(pr.comm_date, -12)), -7 * pr.comm_weeks_before) AS ly_pre_comm_start,
-    date_add(date_trunc('week', add_months(pr.comm_date, -12)), -1) AS ly_pre_comm_end,
-    
-    date_trunc('week', add_months(pr.comm_date, -12)) AS ly_post_comm_start,
-    date_add(date_trunc('week', add_months(pr.comm_date, -12)), 7 * pr.comm_weeks_after - 1) AS ly_post_comm_end,
-    
-    date_add(date_trunc('week', add_months(pr.rollout_date, -12)), -7 * pr.rollout_weeks_before) AS ly_pre_rollout_start,
-    date_add(date_trunc('week', add_months(pr.rollout_date, -12)), -1) AS ly_pre_rollout_end,
-    
-    date_trunc('week', add_months(pr.rollout_date, -12)) AS ly_post_rollout_start,
-    date_add(date_trunc('week', add_months(pr.rollout_date, -12)), 7 * pr.rollout_weeks_after - 1) AS ly_post_rollout_end
-    
-  FROM v_inputs pr
+    date_add(date_trunc('week', comm_date), -7 * comm_weeks_before) AS cy_min_date,
+    date_add(date_trunc('week', rollout_date), 7 * rollout_weeks_after - 1) AS cy_max_date,
+    date_add(date_trunc('week', add_months(comm_date, -12)), -7 * comm_weeks_before) AS ly_min_date,
+    date_add(date_trunc('week', add_months(rollout_date, -12)), 7 * rollout_weeks_after - 1) AS ly_max_date,
+    date_add(date_trunc('week', comm_date), -7 * comm_weeks_before) AS cy_pre_comm_start,
+    date_add(date_trunc('week', comm_date), -1) AS cy_pre_comm_end,
+    date_trunc('week', comm_date) AS cy_post_comm_start,
+    date_add(date_trunc('week', comm_date), 7 * comm_weeks_after - 1) AS cy_post_comm_end,
+    date_add(date_trunc('week', rollout_date), -7 * rollout_weeks_before) AS cy_pre_rollout_start,
+    date_add(date_trunc('week', rollout_date), -1) AS cy_pre_rollout_end,
+    date_trunc('week', rollout_date) AS cy_post_rollout_start,
+    date_add(date_trunc('week', rollout_date), 7 * rollout_weeks_after - 1) AS cy_post_rollout_end,
+    date_add(date_trunc('week', add_months(comm_date, -12)), -7 * comm_weeks_before) AS ly_pre_comm_start,
+    date_add(date_trunc('week', add_months(comm_date, -12)), -1) AS ly_pre_comm_end,
+    date_trunc('week', add_months(comm_date, -12)) AS ly_post_comm_start,
+    date_add(date_trunc('week', add_months(comm_date, -12)), 7 * comm_weeks_after - 1) AS ly_post_comm_end,
+    date_add(date_trunc('week', add_months(rollout_date, -12)), -7 * rollout_weeks_before) AS ly_pre_rollout_start,
+    date_add(date_trunc('week', add_months(rollout_date, -12)), -1) AS ly_pre_rollout_end,
+    date_trunc('week', add_months(rollout_date, -12)) AS ly_post_rollout_start,
+    date_add(date_trunc('week', add_months(rollout_date, -12)), 7 * rollout_weeks_after - 1) AS ly_post_rollout_end,
+    filter_tours,
+    filter_suppliers,
+    filter_countries
+  FROM v_inputs
 ),
 
-history_filtered AS (
-  SELECT
-    dr.country AS country_name,
+base_data AS (
+  SELECT /*+ BROADCAST(db), BROADCAST(tf), BROADCAST(cf) */
+    CASE 
+      WHEN CAST(h.date_id AS date) BETWEEN db.cy_min_date AND db.cy_max_date THEN 'CY'
+      WHEN CAST(h.date_id AS date) BETWEEN db.ly_min_date AND db.ly_max_date THEN 'LY'
+    END AS period,
+    dl.country_name,
     h.tour_id,
     h.supplier_id,
+    date_trunc('week', CAST(h.date_id AS date)) AS week_start,
     CAST(h.date_id AS date) AS dt,
-
-    CASE
-      WHEN CAST(h.date_id AS date) >= dr.cy_pre_comm_start 
-           AND CAST(h.date_id AS date) <= dr.cy_post_rollout_end 
-        THEN 'CY'
-      WHEN CAST(h.date_id AS date) >= dr.ly_pre_comm_start 
-           AND CAST(h.date_id AS date) <= dr.ly_post_rollout_end 
-        THEN 'LY'
-    END AS period,
-
     CAST(h.is_online AS int) AS is_online_day,
-    
-    dr.cy_pre_comm_start,
-    dr.cy_pre_comm_end,
-    dr.cy_post_comm_start,
-    dr.cy_post_comm_end,
-    dr.cy_pre_rollout_start,
-    dr.cy_pre_rollout_end,
-    dr.cy_post_rollout_start,
-    dr.cy_post_rollout_end,
-    dr.ly_pre_comm_start,
-    dr.ly_pre_comm_end,
-    dr.ly_post_comm_start,
-    dr.ly_post_comm_end,
-    dr.ly_pre_rollout_start,
-    dr.ly_pre_rollout_end,
-    dr.ly_post_rollout_start,
-    dr.ly_post_rollout_end
-    
+    db.cy_pre_comm_start, db.cy_pre_comm_end,
+    db.cy_post_comm_start, db.cy_post_comm_end,
+    db.cy_pre_rollout_start, db.cy_pre_rollout_end,
+    db.cy_post_rollout_start, db.cy_post_rollout_end,
+    db.ly_pre_comm_start, db.ly_pre_comm_end,
+    db.ly_post_comm_start, db.ly_post_comm_end,
+    db.ly_pre_rollout_start, db.ly_pre_rollout_end,
+    db.ly_post_rollout_start, db.ly_post_rollout_end
   FROM production.supply.fact_tour_review_history h
-  INNER JOIN dwh.dim_location dl
-    ON dl.location_id = h.location_id
-  CROSS JOIN date_ranges dr
-  CROSS JOIN filter_flags ff
-  LEFT JOIN tour_filter tf
-    ON h.tour_id = tf.tour_id
-  LEFT JOIN supplier_filter sf
-    ON h.supplier_id = sf.supplier_id
+  INNER JOIN dwh.dim_location dl ON dl.location_id = h.location_id
+  INNER JOIN date_bounds db ON 1=1
+  INNER JOIN _param_tour_ids tf ON h.tour_id = tf.tour_id
+  INNER JOIN _param_countries cf ON LOWER(dl.country_name) = LOWER(cf.country_name)
   WHERE
-    LOWER(dl.country_name) = LOWER(dr.country)
-    AND (ff.should_filter_tours = 0 OR tf.tour_id IS NOT NULL)
-    AND (ff.should_filter_suppliers = 0 OR sf.supplier_id IS NOT NULL)
-    AND (
-      (CAST(h.date_id AS date) >= dr.cy_pre_comm_start AND CAST(h.date_id AS date) <= dr.cy_post_rollout_end)
-      OR
-      (CAST(h.date_id AS date) >= dr.ly_pre_comm_start AND CAST(h.date_id AS date) <= dr.ly_post_rollout_end)
-    )
+    (CAST(h.date_id AS date) BETWEEN db.cy_min_date AND db.cy_max_date
+     OR CAST(h.date_id AS date) BETWEEN db.ly_min_date AND db.ly_max_date)
 ),
 
-tours_in_scope AS (
-  SELECT DISTINCT
-    period,
-    country_name,
-    tour_id,
-    supplier_id,
-    dt,
-    is_online_day,
-    cy_pre_comm_start,
-    cy_pre_comm_end,
-    cy_post_comm_start,
-    cy_post_comm_end,
-    cy_pre_rollout_start,
-    cy_pre_rollout_end,
-    cy_post_rollout_start,
-    cy_post_rollout_end,
-    ly_pre_comm_start,
-    ly_pre_comm_end,
-    ly_post_comm_start,
-    ly_post_comm_end,
-    ly_pre_rollout_start,
-    ly_pre_rollout_end,
-    ly_post_rollout_start,
-    ly_post_rollout_end
-  FROM history_filtered
+windowed_data AS (
+  SELECT
+    period, country_name, week_start, tour_id, supplier_id, dt, is_online_day,
+    CASE
+      WHEN (period = 'CY' AND dt BETWEEN cy_pre_comm_start AND cy_pre_comm_end) THEN 'PRE_COMM'
+      WHEN (period = 'CY' AND dt BETWEEN cy_post_comm_start AND cy_post_comm_end) THEN 'POST_COMM'
+      WHEN (period = 'CY' AND dt BETWEEN cy_pre_rollout_start AND cy_pre_rollout_end) THEN 'PRE_ROLLOUT'
+      WHEN (period = 'CY' AND dt BETWEEN cy_post_rollout_start AND cy_post_rollout_end) THEN 'POST_ROLLOUT'
+      WHEN (period = 'LY' AND dt BETWEEN ly_pre_comm_start AND ly_pre_comm_end) THEN 'PRE_COMM'
+      WHEN (period = 'LY' AND dt BETWEEN ly_post_comm_start AND ly_post_comm_end) THEN 'POST_COMM'
+      WHEN (period = 'LY' AND dt BETWEEN ly_pre_rollout_start AND ly_pre_rollout_end) THEN 'PRE_ROLLOUT'
+      WHEN (period = 'LY' AND dt BETWEEN ly_post_rollout_start AND ly_post_rollout_end) THEN 'POST_ROLLOUT'
+    END AS window
+  FROM base_data
 ),
 
-windowed_days AS (
-  -- PRE_COMM
+tour_week_agg AS (
   SELECT
-    period, country_name, tour_id, supplier_id, dt,
-    date_trunc('week', dt) AS week_start,
-    is_online_day,
-    'PRE_COMM' AS window
-  FROM tours_in_scope
-  WHERE (period = 'CY' AND dt >= cy_pre_comm_start AND dt <= cy_pre_comm_end)
-     OR (period = 'LY' AND dt >= ly_pre_comm_start AND dt <= ly_pre_comm_end)
-  
-  UNION ALL
-  
-  -- POST_COMM
-  SELECT
-    period, country_name, tour_id, supplier_id, dt,
-    date_trunc('week', dt) AS week_start,
-    is_online_day,
-    'POST_COMM' AS window
-  FROM tours_in_scope
-  WHERE (period = 'CY' AND dt >= cy_post_comm_start AND dt <= cy_post_comm_end)
-     OR (period = 'LY' AND dt >= ly_post_comm_start AND dt <= ly_post_comm_end)
-  
-  UNION ALL
-  
-  -- PRE_ROLLOUT
-  SELECT
-    period, country_name, tour_id, supplier_id, dt,
-    date_trunc('week', dt) AS week_start,
-    is_online_day,
-    'PRE_ROLLOUT' AS window
-  FROM tours_in_scope
-  WHERE (period = 'CY' AND dt >= cy_pre_rollout_start AND dt <= cy_pre_rollout_end)
-     OR (period = 'LY' AND dt >= ly_pre_rollout_start AND dt <= ly_pre_rollout_end)
-  
-  UNION ALL
-  
-  -- POST_ROLLOUT
-  SELECT
-    period, country_name, tour_id, supplier_id, dt,
-    date_trunc('week', dt) AS week_start,
-    is_online_day,
-    'POST_ROLLOUT' AS window
-  FROM tours_in_scope
-  WHERE (period = 'CY' AND dt >= cy_post_rollout_start AND dt <= cy_post_rollout_end)
-     OR (period = 'LY' AND dt >= ly_post_rollout_start AND dt <= ly_post_rollout_end)
-),
-
-window_counts AS (
-  SELECT
-    period,
-    country_name,
-    window,
-    COUNT(DISTINCT week_start) AS n_weeks,
-    COUNT(DISTINCT tour_id) AS total_tours,
-    COUNT(DISTINCT CASE WHEN is_online_day = 1 THEN tour_id END) AS active_tours,
-    COUNT(DISTINCT supplier_id) AS total_suppliers,
-    COUNT(DISTINCT CASE WHEN is_online_day = 1 THEN supplier_id END) AS active_suppliers,
-    COUNT(DISTINCT CASE WHEN is_online_day = 1 THEN tour_id END) / NULLIF(COUNT(DISTINCT tour_id), 0) AS share_active_tours,
-    COUNT(DISTINCT CASE WHEN is_online_day = 1 THEN supplier_id END) / NULLIF(COUNT(DISTINCT supplier_id), 0) AS share_active_suppliers
-  FROM windowed_days
-  WHERE window IS NOT NULL
-  GROUP BY period, country_name, window
-),
-
-tour_week_days AS (
-  SELECT
-    period,
-    country_name,
-    window,
-    week_start,
-    tour_id,
+    period, country_name, window, week_start, tour_id,
     SUM(is_online_day) AS online_days
-  FROM windowed_days
+  FROM windowed_data
   WHERE window IS NOT NULL
   GROUP BY period, country_name, window, week_start, tour_id
 ),
 
-tour_week_metrics AS (
+supplier_week_agg AS (
   SELECT
-    period,
-    country_name,
-    window,
-    week_start,
-    AVG(online_days) AS avg_days_online_per_tour_week,
-    AVG(CASE WHEN online_days > 0 THEN online_days END) AS avg_days_online_per_active_tour_week
-  FROM tour_week_days
-  GROUP BY period, country_name, window, week_start
-),
-
-tour_window_weekly_avgs AS (
-  SELECT
-    period,
-    country_name,
-    window,
-    AVG(avg_days_online_per_tour_week) AS avg_days_online_per_tour,
-    AVG(avg_days_online_per_active_tour_week) AS avg_days_online_per_active_tour
-  FROM tour_week_metrics
-  GROUP BY period, country_name, window
-),
-
-supplier_day_dedup AS (
-  SELECT
-    period,
-    country_name,
-    window,
-    week_start,
-    supplier_id,
-    dt,
-    MAX(is_online_day) AS supplier_online_day
-  FROM windowed_days
+    period, country_name, window, week_start, supplier_id,
+    SUM(is_online_day) AS online_days
+  FROM windowed_data
   WHERE window IS NOT NULL
-  GROUP BY period, country_name, window, week_start, supplier_id, dt
-),
-
-supplier_week_days AS (
-  SELECT
-    period,
-    country_name,
-    window,
-    week_start,
-    supplier_id,
-    SUM(supplier_online_day) AS online_days
-  FROM supplier_day_dedup
   GROUP BY period, country_name, window, week_start, supplier_id
 ),
 
-supplier_week_metrics AS (
+final_metrics AS (
   SELECT
-    period,
-    country_name,
-    window,
-    week_start,
-    AVG(online_days) AS avg_days_online_per_supplier_week,
-    AVG(CASE WHEN online_days > 0 THEN online_days END) AS avg_days_online_per_active_supplier_week
-  FROM supplier_week_days
-  GROUP BY period, country_name, window, week_start
-),
-
-supplier_window_weekly_avgs AS (
-  SELECT
-    period,
-    country_name,
-    window,
-    AVG(avg_days_online_per_supplier_week) AS avg_days_online_per_supplier,
-    AVG(avg_days_online_per_active_supplier_week) AS avg_days_online_per_active_supplier
-  FROM supplier_week_metrics
-  GROUP BY period, country_name, window
+    wd.period,
+    wd.country_name,
+    wd.window,
+    COUNT(DISTINCT wd.week_start) AS n_weeks,
+    COUNT(DISTINCT wd.tour_id) AS total_tours,
+    COUNT(DISTINCT CASE WHEN wd.is_online_day = 1 THEN wd.tour_id END) AS active_tours,
+    COUNT(DISTINCT wd.supplier_id) AS total_suppliers,
+    COUNT(DISTINCT CASE WHEN wd.is_online_day = 1 THEN wd.supplier_id END) AS active_suppliers,
+    AVG(tw.online_days) AS avg_days_online_per_tour,
+    AVG(CASE WHEN tw.online_days > 0 THEN tw.online_days END) AS avg_days_online_per_active_tour,
+    AVG(sw.online_days) AS avg_days_online_per_supplier,
+    AVG(CASE WHEN sw.online_days > 0 THEN sw.online_days END) AS avg_days_online_per_active_supplier
+  FROM windowed_data wd
+  LEFT JOIN tour_week_agg tw 
+    ON wd.period = tw.period 
+    AND wd.country_name = tw.country_name 
+    AND wd.window = tw.window 
+    AND wd.week_start = tw.week_start 
+    AND wd.tour_id = tw.tour_id
+  LEFT JOIN supplier_week_agg sw
+    ON wd.period = sw.period 
+    AND wd.country_name = sw.country_name 
+    AND wd.window = sw.window 
+    AND wd.week_start = sw.week_start 
+    AND wd.supplier_id = sw.supplier_id
+  WHERE wd.window IS NOT NULL
+  GROUP BY wd.period, wd.country_name, wd.window
 )
 
 SELECT
-  wc.period,
-  wc.country_name,
-  wc.window,
-  wc.n_weeks,
-  wc.total_tours,
-  wc.active_tours,
-  wc.share_active_tours,
-  wc.total_suppliers,
-  wc.active_suppliers,
-  wc.share_active_suppliers,
-  twa.avg_days_online_per_tour,
-  twa.avg_days_online_per_active_tour,
-  swa.avg_days_online_per_supplier,
-  swa.avg_days_online_per_active_supplier
-FROM window_counts wc
-LEFT JOIN tour_window_weekly_avgs twa
-  ON twa.period = wc.period
-  AND twa.country_name = wc.country_name
-  AND twa.window = wc.window
-LEFT JOIN supplier_window_weekly_avgs swa
-  ON swa.period = wc.period
-  AND swa.country_name = wc.country_name
-  AND swa.window = wc.window
-ORDER BY country_name, period, 
-  CASE window 
-    WHEN 'PRE_COMM' THEN 1 
-    WHEN 'POST_COMM' THEN 2 
-    WHEN 'PRE_ROLLOUT' THEN 3 
-    WHEN 'POST_ROLLOUT' THEN 4 
+  period,
+  country_name,
+  window,
+  n_weeks,
+  total_tours,
+  active_tours,
+  CAST(active_tours AS DOUBLE) / NULLIF(total_tours, 0) AS share_active_tours,
+  total_suppliers,
+  active_suppliers,
+  CAST(active_suppliers AS DOUBLE) / NULLIF(total_suppliers, 0) AS share_active_suppliers,
+  avg_days_online_per_tour,
+  avg_days_online_per_active_tour,
+  avg_days_online_per_supplier,
+  avg_days_online_per_active_supplier
+FROM final_metrics
+ORDER BY country_name, period,
+  CASE window
+    WHEN 'PRE_COMM' THEN 1
+    WHEN 'POST_COMM' THEN 2
+    WHEN 'PRE_ROLLOUT' THEN 3
+    WHEN 'POST_ROLLOUT' THEN 4
   END;

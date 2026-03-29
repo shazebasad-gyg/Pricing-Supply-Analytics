@@ -1,0 +1,582 @@
+{
+  "datasets": [
+    {
+      "name": "252a3d04",
+      "displayName": "Untitled dataset",
+      "queryLines": [
+        ""
+      ]
+    },
+    {
+      "name": "7015b651",
+      "displayName": "dst_supply_dataset",
+      "queryLines": [
+        "SELECT * FROM production.supply_analytics.dst_supply_dataset"
+      ],
+      "columns": [
+        {
+          "displayName": "Online Rate - Tours",
+          "description": "Weighted online rate for tours across countries",
+          "expression": "SUM(`active_tours`) / SUM(`total_tours`)"
+        },
+        {
+          "displayName": "Online Rate - Suppliers",
+          "description": "Weighted online rate for suppliers across countries",
+          "expression": "SUM(`active_suppliers`) / SUM(`total_suppliers`)"
+        }
+      ]
+    },
+    {
+      "name": "33a0264d",
+      "displayName": "DID Estimates",
+      "queryLines": [
+        "WITH agg AS (\n",
+        "  SELECT\n",
+        "    period_window,\n",
+        "    SUM(total_tours) as total_tours,\n",
+        "    SUM(active_tours) as active_tours,\n",
+        "    SUM(total_suppliers) as total_suppliers,\n",
+        "    SUM(active_suppliers) as active_suppliers,\n",
+        "    SUM(active_tours) * 1.0 / NULLIF(SUM(total_tours), 0) as share_active_tours,\n",
+        "    SUM(active_suppliers) * 1.0 / NULLIF(SUM(total_suppliers), 0) as share_active_suppliers\n",
+        "  FROM\n",
+        "    production.supply_analytics.dst_supply_dataset\n",
+        "  WHERE\n",
+        "    country_name = :country\n",
+        "  GROUP BY\n",
+        "    period_window\n",
+        "),\n",
+        "pivoted AS (\n",
+        "  SELECT\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN total_tours\n",
+        "      END\n",
+        "    ) as tt_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN total_tours\n",
+        "      END\n",
+        "    ) as tt_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN total_tours\n",
+        "      END\n",
+        "    ) as tt_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN total_tours\n",
+        "      END\n",
+        "    ) as tt_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN active_tours\n",
+        "      END\n",
+        "    ) as at_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN active_tours\n",
+        "      END\n",
+        "    ) as at_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN active_tours\n",
+        "      END\n",
+        "    ) as at_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN active_tours\n",
+        "      END\n",
+        "    ) as at_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN share_active_tours\n",
+        "      END\n",
+        "    ) as sat_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN share_active_tours\n",
+        "      END\n",
+        "    ) as sat_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN share_active_tours\n",
+        "      END\n",
+        "    ) as sat_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN share_active_tours\n",
+        "      END\n",
+        "    ) as sat_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN total_suppliers\n",
+        "      END\n",
+        "    ) as ts_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN total_suppliers\n",
+        "      END\n",
+        "    ) as ts_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN total_suppliers\n",
+        "      END\n",
+        "    ) as ts_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN total_suppliers\n",
+        "      END\n",
+        "    ) as ts_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN active_suppliers\n",
+        "      END\n",
+        "    ) as as_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN active_suppliers\n",
+        "      END\n",
+        "    ) as as_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN active_suppliers\n",
+        "      END\n",
+        "    ) as as_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN active_suppliers\n",
+        "      END\n",
+        "    ) as as_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN share_active_suppliers\n",
+        "      END\n",
+        "    ) as sas_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN share_active_suppliers\n",
+        "      END\n",
+        "    ) as sas_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN share_active_suppliers\n",
+        "      END\n",
+        "    ) as sas_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN share_active_suppliers\n",
+        "      END\n",
+        "    ) as sas_post_cy\n",
+        "  FROM\n",
+        "    agg\n",
+        ")\n",
+        "SELECT\n",
+        "  *\n",
+        "FROM\n",
+        "  (\n",
+        "    SELECT\n",
+        "      'Total Tours' as metric_name,\n",
+        "      ROUND(\n",
+        "        (\n",
+        "          (tt_post_cy - tt_pre_cy) * 100.0 / NULLIF(tt_pre_cy, 0)\n",
+        "            - (tt_post_ly - tt_pre_ly) * 100.0 / NULLIF(tt_pre_ly, 0)\n",
+        "        ),\n",
+        "        1\n",
+        "      ) as did_pp,\n",
+        "      1 as sort_order\n",
+        "    FROM\n",
+        "      pivoted\n",
+        "    UNION ALL\n",
+        "    SELECT\n",
+        "      'Active Tours',\n",
+        "      ROUND(\n",
+        "        (\n",
+        "          (at_post_cy - at_pre_cy) * 100.0 / NULLIF(at_pre_cy, 0)\n",
+        "            - (at_post_ly - at_pre_ly) * 100.0 / NULLIF(at_pre_ly, 0)\n",
+        "        ),\n",
+        "        1\n",
+        "      ),\n",
+        "      2\n",
+        "    FROM\n",
+        "      pivoted\n",
+        "    UNION ALL\n",
+        "    SELECT\n",
+        "      'Share Active Tours',\n",
+        "      ROUND(((sat_post_cy - sat_pre_cy) - (sat_post_ly - sat_pre_ly)) * 100, 1),\n",
+        "      3\n",
+        "    FROM\n",
+        "      pivoted\n",
+        "    UNION ALL\n",
+        "    SELECT\n",
+        "      'Total Suppliers',\n",
+        "      ROUND(\n",
+        "        (\n",
+        "          (ts_post_cy - ts_pre_cy) * 100.0 / NULLIF(ts_pre_cy, 0)\n",
+        "            - (ts_post_ly - ts_pre_ly) * 100.0 / NULLIF(ts_pre_ly, 0)\n",
+        "        ),\n",
+        "        1\n",
+        "      ),\n",
+        "      4\n",
+        "    FROM\n",
+        "      pivoted\n",
+        "    UNION ALL\n",
+        "    SELECT\n",
+        "      'Active Suppliers',\n",
+        "      ROUND(\n",
+        "        (\n",
+        "          (as_post_cy - as_pre_cy) * 100.0 / NULLIF(as_pre_cy, 0)\n",
+        "            - (as_post_ly - as_pre_ly) * 100.0 / NULLIF(as_pre_ly, 0)\n",
+        "        ),\n",
+        "        1\n",
+        "      ),\n",
+        "      5\n",
+        "    FROM\n",
+        "      pivoted\n",
+        "    UNION ALL\n",
+        "    SELECT\n",
+        "      'Share Active Suppliers',\n",
+        "      ROUND(((sas_post_cy - sas_pre_cy) - (sas_post_ly - sas_pre_ly)) * 100, 1),\n",
+        "      6\n",
+        "    FROM\n",
+        "      pivoted\n",
+        "  ) t\n",
+        "ORDER BY\n",
+        "  sort_order"
+      ],
+      "parameters": [
+        {
+          "displayName": "Country",
+          "keyword": "country",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "Germany"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "columns": [
+        {
+          "displayName": "Change Category",
+          "description": "Color category: Positive >2pp, Negative <-2pp, Negligible",
+          "expression": "CASE WHEN `did_pp` > 2 THEN 'Positive (>2pp)' WHEN `did_pp` < -2 THEN 'Negative (<-2pp)' ELSE 'Negligible' END"
+        }
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "0e72f143",
+      "displayName": "Supply Overview",
+      "layout": [
+        {
+          "widget": {
+            "name": "167e7bac",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "7015b651",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "sum(active_tours)",
+                      "expression": "SUM(`active_tours`)"
+                    },
+                    {
+                      "name": "sum(active_suppliers)",
+                      "expression": "SUM(`active_suppliers`)"
+                    },
+                    {
+                      "name": "measure(Online Rate - Tours)",
+                      "expression": "MEASURE(`Online Rate - Tours`)"
+                    },
+                    {
+                      "name": "measure(Online Rate - Suppliers)",
+                      "expression": "MEASURE(`Online Rate - Suppliers`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "frame": {
+                "title": "Active Supply & Online Rates by Period",
+                "showTitle": true
+              },
+              "widgetType": "combo",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period Window",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "primary": {
+                    "fields": [
+                      {
+                        "fieldName": "sum(active_tours)",
+                        "displayName": "Active Tours"
+                      },
+                      {
+                        "fieldName": "sum(active_suppliers)",
+                        "displayName": "Active Suppliers"
+                      }
+                    ],
+                    "scale": {
+                      "type": "quantitative"
+                    }
+                  },
+                  "secondary": {
+                    "fields": [
+                      {
+                        "fieldName": "measure(Online Rate - Tours)",
+                        "displayName": "Online Rate - Tours"
+                      },
+                      {
+                        "fieldName": "measure(Online Rate - Suppliers)",
+                        "displayName": "Online Rate - Suppliers"
+                      }
+                    ],
+                    "scale": {
+                      "type": "quantitative"
+                    }
+                  }
+                },
+                "color": {
+                  "legend": {
+                    "position": "bottom"
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 12,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "fb344acf",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "33a0264d",
+                  "fields": [
+                    {
+                      "name": "Change Category",
+                      "expression": "`Change Category`"
+                    },
+                    {
+                      "name": "metric_name",
+                      "expression": "`metric_name`"
+                    },
+                    {
+                      "name": "max(did_pp)",
+                      "expression": "MAX(`did_pp`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "DID Estimate (percentage points)",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "metric_name",
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "displayName": "Metric",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "Total Tours",
+                        "Active Tours",
+                        "Share Active Tours",
+                        "Total Suppliers",
+                        "Active Suppliers",
+                        "Share Active Suppliers"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "max(did_pp)",
+                  "format": {
+                    "type": "number-plain",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    },
+                    "abbreviation": "none"
+                  },
+                  "displayName": "DID (pp)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "Change Category",
+                  "legend": {
+                    "position": "bottom"
+                  },
+                  "displayName": "Change Category",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Positive (>2pp)",
+                        "color": "#2E7D32"
+                      },
+                      {
+                        "value": "Negligible",
+                        "color": "#9E9E9E"
+                      },
+                      {
+                        "value": "Negative (<-2pp)",
+                        "color": "#D32F2F"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "did_formula_text",
+            "multilineTextboxSpec": {
+              "lines": [
+                "**DID % change** = ((CY (POST–PRE)/PRE) – (LY (POST–PRE)/PRE)) × 100 — Positive = CY improved more than LY | Negative = CY worsened relative to LY"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 13,
+            "width": 12,
+            "height": 1
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "b8c0ce4f",
+      "displayName": "Global Filters",
+      "layout": [
+        {
+          "widget": {
+            "name": "country_filter",
+            "queries": [
+              {
+                "name": "dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12b7d72d3127a9e12d5c18258720c_country_name",
+                "query": {
+                  "datasetName": "7015b651",
+                  "fields": [
+                    {
+                      "name": "country_name",
+                      "expression": "`country_name`"
+                    },
+                    {
+                      "name": "country_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12b8df27115b99b2c2b02fed7330f_country",
+                "query": {
+                  "datasetName": "33a0264d",
+                  "parameters": [
+                    {
+                      "name": "country",
+                      "keyword": "country"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Country",
+                "showTitle": true
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "country_name",
+                    "queryName": "dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12b7d72d3127a9e12d5c18258720c_country_name"
+                  },
+                  {
+                    "parameterName": "country",
+                    "queryName": "parameter_dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12b8df27115b99b2c2b02fed7330f_country"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 3,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
+}
