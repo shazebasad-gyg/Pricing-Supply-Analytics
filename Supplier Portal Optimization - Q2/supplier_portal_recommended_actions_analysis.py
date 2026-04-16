@@ -13,52 +13,91 @@
 # MAGIC
 # MAGIC **Relevant supplier / activity definition (applied to reach queries):**
 # MAGIC - Relevant activity: `catalog__tour.supplier_status = 'active'` AND `catalog__tour.gyg_status = 'active'`
-# MAGIC - Relevant supplier: `dim_supplier_summary.gyg_status = 'active'`, `supplier_type = 'Marketplace'`, has at least one relevant activity, AND (`bookings_l365 > 1` OR any activity with `first_online_timestamp` within the last 30 days)
+# MAGIC - Relevant supplier: `user_status = Active`, has at least one relevant activity, AND (> 1 booking in L365 at supplier level OR any activity first online < 30 days ago)
 
 # COMMAND ----------
 
 SNAPSHOT_DATE  = "2026-04-13"
 FEATURE_LAUNCH = "2025-05-15"
 
-# ─── Relevant Activity ─────────────────────────────────────────────────────
-# All of the following must hold:
-#   1. Activity supplier status = active  (catalog__tour.supplier_status)
-#   2. Activity GYG status      = active  (catalog__tour.gyg_status)
+# ─── Relevant Activity ───────────────────────────────────────────
+# All three must hold:
+#   1. Activity supplier status = Active  (dim_tour.status)
+#   2. Activity GYG status      = Active  (dim_tour.gyg_status)
+#   3. First went online < 30 days ago  OR  received > 1 booking in L365
+#      Online status sourced from dim_tour_history.is_online (MIN = first ever online)
 #
-# ─── Relevant Supplier ─────────────────────────────────────────────────────
+# ─── Relevant Supplier ──────────────────────────────────────────
 # All of the following must hold:
-#   1. Supplier GYG status  = active   (dim_supplier_summary.gyg_status)
-#   2. supplier_type        = Marketplace
-#   3. > 1 booking in L365 (bookings_l365)  OR  any activity first online < 30 days ago
-#   4. Has at least one relevant activity (as defined above)
+#   1. Supplier status    = Active      (dim_supplier_summary.user_status)
+#   2. > 1 booking in L365 at supplier level  OR  any activity first online < 30 days
+#   3. Has at least one relevant activity (as defined above)
 
 RELEVANT_SUPPLIERS_CTE = f"""
-activation_period_suppliers AS (
-  -- Suppliers with any activity that first went online within the last 30 days
-  SELECT DISTINCT supplier_id
-  FROM production.db_mirror_dbz.catalog__tour
-  WHERE CAST(first_online_timestamp AS DATE) >= DATE_SUB(DATE '{SNAPSHOT_DATE}', 30)
+activity_bookings_l365 AS (
+  SELECT
+    tour_id,
+    COUNT(*) AS bookings_l365
+  FROM production.dwh.fact_booking
+  WHERE date_of_checkout >= DATE_SUB(DATE '{SNAPSHOT_DATE}', 365)
+    AND is_fraud   = FALSE
+    AND status_id IN (1, 2)
+  GROUP BY tour_id
+),
+supplier_bookings_l365 AS (
+  SELECT
+    supplier_id,
+    COUNT(*) AS bookings_l365
+  FROM production.dwh.fact_booking
+  WHERE date_of_checkout >= DATE_SUB(DATE '{SNAPSHOT_DATE}', 365)
+    AND is_fraud   = FALSE
+    AND status_id IN (1, 2)
+  GROUP BY supplier_id
+),
+activity_first_online AS (
+  -- First date each activity had is_online = TRUE in dim_tour_history
+  SELECT
+    tour_id,
+    CAST(MIN(update_timestamp) AS DATE) AS first_online_date
+  FROM production.dwh.dim_tour_history
+  WHERE is_online = TRUE
+  GROUP BY tour_id
 ),
 relevant_activities AS (
-  -- Activities with active supplier and active GYG status
-  SELECT DISTINCT supplier_id
-  FROM production.db_mirror_dbz.catalog__tour
-  WHERE lower(supplier_status) = 'active'
-    AND lower(gyg_status)      = 'active'
+  SELECT DISTINCT
+    a.tour_id,
+    a.user_id AS supplier_id
+  FROM production.dwh.dim_tour a
+  LEFT JOIN activity_bookings_l365 ab ON a.tour_id = ab.tour_id
+  LEFT JOIN activity_first_online  fo ON a.tour_id = fo.tour_id
+  WHERE lower(a.status)     = 'active'
+    AND lower(a.gyg_status) = 'active'
+    AND (
+      fo.first_online_date >= DATE_SUB(DATE '{SNAPSHOT_DATE}', 30)
+      OR COALESCE(ab.bookings_l365, 0) > 1
+    )
+),
+activation_period_suppliers AS (
+  -- Suppliers with any activity that first went online within the last 30 days
+  SELECT DISTINCT a.user_id AS supplier_id
+  FROM production.dwh.dim_tour a
+  INNER JOIN activity_first_online fo ON a.tour_id = fo.tour_id
+  WHERE fo.first_online_date >= DATE_SUB(DATE '{SNAPSHOT_DATE}', 30)
 ),
 relevant_suppliers AS (
   SELECT DISTINCT s.supplier_id
   FROM production.supply_analytics.dim_supplier_summary s
   INNER JOIN relevant_activities         ra  ON s.supplier_id = ra.supplier_id
+  LEFT  JOIN supplier_bookings_l365      sb  ON s.supplier_id = sb.supplier_id
   LEFT  JOIN activation_period_suppliers aps ON s.supplier_id = aps.supplier_id
-  WHERE lower(s.gyg_status) = 'active'
-    AND s.supplier_type     = 'Marketplace'
+  WHERE lower(s.user_status) = 'active'
     AND (
-      COALESCE(s.bookings_l365, 0) > 1
+      COALESCE(sb.bookings_l365, 0) > 1
       OR aps.supplier_id IS NOT NULL
     )
 )
 """
+
 
 # COMMAND ----------
 
@@ -623,7 +662,7 @@ display(df_q7_2)
 # MAGIC | Term | Definition |
 # MAGIC |------|-----------|
 # MAGIC | **Relevant activity** | Activity where: `catalog__tour.supplier_status = 'active'` AND `catalog__tour.gyg_status = 'active'` |
-# MAGIC | **Relevant supplier** | Supplier where: `gyg_status = 'active'`, `supplier_type = 'Marketplace'`, has at least one relevant activity, AND (`bookings_l365 > 1` OR any activity with `first_online_timestamp` within the last 30 days) |
+# MAGIC | **Relevant supplier** | Supplier where: `user_status = Active`, has at least one relevant activity, AND (> 1 booking in L365 at supplier level OR any activity first online < 30 days) |
 # MAGIC | **Activation period** | A 30-day window beginning when an activity first goes online. Activities in this period are included in the relevant supplier definition even with fewer than 2 bookings in L365 |
 # MAGIC | **Feature launch** | 2025-05-15 — date when Recommended Actions was first surfaced. Lower bound of all analysis windows |
 # MAGIC | **Snapshot date** | 2026-04-13 — upper bound of all analysis windows |
