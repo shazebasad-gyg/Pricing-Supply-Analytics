@@ -1,0 +1,4297 @@
+{
+  "datasets": [
+    {
+      "name": "b36386e3",
+      "displayName": "dst_session_performance_dataset",
+      "queryLines": [
+        "SELECT * FROM production.supply_analytics.dst_session_performance_dataset"
+      ]
+    },
+    {
+      "name": "feae45be",
+      "displayName": "dst_booking_dataset",
+      "queryLines": [
+        "SELECT * FROM production.supply_analytics.dst_booking_dataset"
+      ]
+    },
+    {
+      "name": "26b28a38",
+      "displayName": "dst_cancellation_dataset",
+      "queryLines": [
+        "SELECT * FROM production.supply_analytics.dst_cancellation_dataset"
+      ]
+    },
+    {
+      "name": "d4d40117",
+      "displayName": "dst_price_parity_dataset",
+      "queryLines": [
+        "SELECT * FROM production.supply_analytics.dst_price_parity_dataset"
+      ]
+    },
+    {
+      "name": "a2ccb662",
+      "displayName": "dst_supply_dataset",
+      "queryLines": [
+        "SELECT * FROM production.supply_analytics.dst_supply_dataset"
+      ]
+    },
+    {
+      "name": "da819d73",
+      "displayName": "dst_price_change_dataset",
+      "queryLines": [
+        "SELECT * FROM production.supply_analytics.dst_price_change_dataset"
+      ],
+      "columns": [
+        {
+          "displayName": "suppliers_pct_3m",
+          "expression": "`pct_suppliers_changed_3m` / 100"
+        },
+        {
+          "displayName": "suppliers_pct_6m",
+          "expression": "`pct_suppliers_changed_6m` / 100"
+        },
+        {
+          "displayName": "suppliers_pct_12m",
+          "expression": "`pct_suppliers_changed_12m` / 100"
+        }
+      ]
+    },
+    {
+      "name": "8b598814",
+      "displayName": "DID Bookings & NR",
+      "queryLines": [
+        "WITH agg AS (\n",
+        "  SELECT\n",
+        "    period_window,\n",
+        "    SUM(bookings) AS bookings,\n",
+        "    SUM(nr) AS nr\n",
+        "  FROM\n",
+        "    production.supply_analytics.dst_booking_dataset\n",
+        "  WHERE\n",
+        "    array_contains(:country, country_name)\n",
+        "  GROUP BY\n",
+        "    period_window\n",
+        "),\n",
+        "pivoted AS (\n",
+        "  SELECT\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN bookings\n",
+        "      END\n",
+        "    ) AS bookings_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN bookings\n",
+        "      END\n",
+        "    ) AS bookings_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN bookings\n",
+        "      END\n",
+        "    ) AS bookings_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN bookings\n",
+        "      END\n",
+        "    ) AS bookings_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN nr\n",
+        "      END\n",
+        "    ) AS nr_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN nr\n",
+        "      END\n",
+        "    ) AS nr_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN nr\n",
+        "      END\n",
+        "    ) AS nr_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN nr\n",
+        "      END\n",
+        "    ) AS nr_post_cy\n",
+        "  FROM\n",
+        "    agg\n",
+        ")\n",
+        "SELECT\n",
+        "  ((bookings_post_cy - bookings_pre_cy) * 1.0 / bookings_pre_cy)\n",
+        "    - ((bookings_post_ly - bookings_pre_ly) * 1.0 / bookings_pre_ly) AS did_bookings,\n",
+        "  ((nr_post_cy - nr_pre_cy) * 1.0 / nr_pre_cy)\n",
+        "    - ((nr_post_ly - nr_pre_ly) * 1.0 / nr_pre_ly) AS did_nr\n",
+        "FROM\n",
+        "  pivoted"
+      ],
+      "parameters": [
+        {
+          "displayName": "Country",
+          "keyword": "country",
+          "dataType": "STRING",
+          "complexType": "MULTI",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "Germany"
+                },
+                {
+                  "value": "Italy"
+                },
+                {
+                  "value": "Spain"
+                },
+                {
+                  "value": "Turkey"
+                },
+                {
+                  "value": "Britain"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6a349804",
+      "displayName": "DID Signal Metrics",
+      "queryLines": [
+        "WITH availability_agg AS (\n",
+        "  SELECT\n",
+        "    period_window,\n",
+        "    AVG(median_timeslots_6m) as timeslots_6m\n",
+        "  FROM\n",
+        "    production.supply_analytics.dst_price_change_dataset\n",
+        "  WHERE\n",
+        "    array_contains(:country, country_name)\n",
+        "  GROUP BY\n",
+        "    period_window\n",
+        "),\n",
+        "price_agg AS (\n",
+        "  SELECT\n",
+        "    period_window,\n",
+        "    AVG(median_final_red_6m) as median_price_6m\n",
+        "  FROM\n",
+        "    production.supply_analytics.dst_price_change_dataset\n",
+        "  WHERE\n",
+        "    array_contains(:country, country_name)\n",
+        "  GROUP BY\n",
+        "    period_window\n",
+        "),\n",
+        "parity_agg AS (\n",
+        "  SELECT\n",
+        "    period_window,\n",
+        "    SUM(overall_parity_rate * total_impressions)\n",
+        "      / NULLIF(SUM(total_impressions), 0) as overall_parity\n",
+        "  FROM\n",
+        "    production.supply_analytics.dst_price_parity_dataset\n",
+        "  WHERE\n",
+        "    array_contains(:country, country_name)\n",
+        "  GROUP BY\n",
+        "    period_window\n",
+        "),\n",
+        "cancel_agg AS (\n",
+        "  SELECT\n",
+        "    period_window,\n",
+        "    SUM(cancelled_bookings) * 1.0 / NULLIF(SUM(total_bookings), 0) as cancellation_rate\n",
+        "  FROM\n",
+        "    production.supply_analytics.dst_cancellation_dataset\n",
+        "  WHERE\n",
+        "    array_contains(:country, country_name)\n",
+        "  GROUP BY\n",
+        "    period_window\n",
+        "),\n",
+        "session_agg AS (\n",
+        "  SELECT\n",
+        "    period_window,\n",
+        "    SUM(bookings) * 1.0 / NULLIF(SUM(visitors), 0) as conversion_rate,\n",
+        "    SUM(visitors) as total_visitors\n",
+        "  FROM\n",
+        "    production.supply_analytics.dst_session_performance_dataset\n",
+        "  WHERE\n",
+        "    array_contains(:country, country_name)\n",
+        "  GROUP BY\n",
+        "    period_window\n",
+        "),\n",
+        "booking_agg AS (\n",
+        "  SELECT\n",
+        "    period_window,\n",
+        "    SUM(gmv) * 1.0 / NULLIF(SUM(bookings), 0) as aov\n",
+        "  FROM\n",
+        "    production.supply_analytics.dst_booking_dataset\n",
+        "  WHERE\n",
+        "    array_contains(:country, country_name)\n",
+        "  GROUP BY\n",
+        "    period_window\n",
+        "),\n",
+        "avail_pivot AS (\n",
+        "  SELECT\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN timeslots_6m\n",
+        "      END\n",
+        "    ) as ts_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN timeslots_6m\n",
+        "      END\n",
+        "    ) as ts_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN timeslots_6m\n",
+        "      END\n",
+        "    ) as ts_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN timeslots_6m\n",
+        "      END\n",
+        "    ) as ts_post_cy\n",
+        "  FROM\n",
+        "    availability_agg\n",
+        "),\n",
+        "price_pivot AS (\n",
+        "  SELECT\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN median_price_6m\n",
+        "      END\n",
+        "    ) as mp_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN median_price_6m\n",
+        "      END\n",
+        "    ) as mp_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN median_price_6m\n",
+        "      END\n",
+        "    ) as mp_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN median_price_6m\n",
+        "      END\n",
+        "    ) as mp_post_cy\n",
+        "  FROM\n",
+        "    price_agg\n",
+        "),\n",
+        "parity_pivot AS (\n",
+        "  SELECT\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN overall_parity\n",
+        "      END\n",
+        "    ) as op_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN overall_parity\n",
+        "      END\n",
+        "    ) as op_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN overall_parity\n",
+        "      END\n",
+        "    ) as op_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN overall_parity\n",
+        "      END\n",
+        "    ) as op_post_cy\n",
+        "  FROM\n",
+        "    parity_agg\n",
+        "),\n",
+        "cancel_pivot AS (\n",
+        "  SELECT\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN cancellation_rate\n",
+        "      END\n",
+        "    ) as cr_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN cancellation_rate\n",
+        "      END\n",
+        "    ) as cr_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN cancellation_rate\n",
+        "      END\n",
+        "    ) as cr_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN cancellation_rate\n",
+        "      END\n",
+        "    ) as cr_post_cy\n",
+        "  FROM\n",
+        "    cancel_agg\n",
+        "),\n",
+        "session_pivot AS (\n",
+        "  SELECT\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN conversion_rate\n",
+        "      END\n",
+        "    ) as cvr_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN conversion_rate\n",
+        "      END\n",
+        "    ) as cvr_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN conversion_rate\n",
+        "      END\n",
+        "    ) as cvr_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN conversion_rate\n",
+        "      END\n",
+        "    ) as cvr_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN total_visitors\n",
+        "      END\n",
+        "    ) as vis_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN total_visitors\n",
+        "      END\n",
+        "    ) as vis_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN total_visitors\n",
+        "      END\n",
+        "    ) as vis_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN total_visitors\n",
+        "      END\n",
+        "    ) as vis_post_cy\n",
+        "  FROM\n",
+        "    session_agg\n",
+        "),\n",
+        "booking_pivot AS (\n",
+        "  SELECT\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN aov\n",
+        "      END\n",
+        "    ) as aov_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN aov\n",
+        "      END\n",
+        "    ) as aov_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN aov\n",
+        "      END\n",
+        "    ) as aov_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN aov\n",
+        "      END\n",
+        "    ) as aov_post_cy\n",
+        "  FROM\n",
+        "    booking_agg\n",
+        ")\n",
+        "SELECT\n",
+        "  ((ts_post_cy - ts_pre_cy) / NULLIF(ts_pre_cy, 0))\n",
+        "    - ((ts_post_ly - ts_pre_ly) / NULLIF(ts_pre_ly, 0)) as did_availability,\n",
+        "  ((mp_post_cy - mp_pre_cy) / NULLIF(mp_pre_cy, 0))\n",
+        "    - ((mp_post_ly - mp_pre_ly) / NULLIF(mp_pre_ly, 0)) as did_median_price_6m,\n",
+        "  (op_post_cy - op_pre_cy) - (op_post_ly - op_pre_ly) as did_overall_parity,\n",
+        "  (cr_post_cy - cr_pre_cy) - (cr_post_ly - cr_pre_ly) as did_cancellation_rate,\n",
+        "  (cvr_post_cy - cvr_pre_cy) - (cvr_post_ly - cvr_pre_ly) as did_conversion_rate,\n",
+        "  ((vis_post_cy - vis_pre_cy) * 1.0 / NULLIF(vis_pre_cy, 0))\n",
+        "    - ((vis_post_ly - vis_pre_ly) * 1.0 / NULLIF(vis_pre_ly, 0)) as did_visitors,\n",
+        "  ((aov_post_cy - aov_pre_cy) * 1.0 / NULLIF(aov_pre_cy, 0))\n",
+        "    - ((aov_post_ly - aov_pre_ly) * 1.0 / NULLIF(aov_pre_ly, 0)) as did_aov\n",
+        "FROM\n",
+        "  avail_pivot,\n",
+        "  price_pivot,\n",
+        "  parity_pivot,\n",
+        "  cancel_pivot,\n",
+        "  session_pivot,\n",
+        "  booking_pivot"
+      ],
+      "parameters": [
+        {
+          "displayName": "Country",
+          "keyword": "country",
+          "dataType": "STRING",
+          "complexType": "MULTI",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5f1d9f71",
+      "displayName": "DID Supply Details",
+      "queryLines": [
+        "WITH agg AS (\n",
+        "  SELECT\n",
+        "    period_window,\n",
+        "    SUM(active_tours) as active_tours,\n",
+        "    SUM(active_suppliers) as active_suppliers,\n",
+        "    SUM(active_tours) * 1.0 / NULLIF(SUM(total_tours), 0) as share_active_tours,\n",
+        "    SUM(active_suppliers) * 1.0 / NULLIF(SUM(total_suppliers), 0) as share_active_suppliers,\n",
+        "    SUM(avg_days_online_per_tour_per_week * active_tours)\n",
+        "      * 1.0\n",
+        "      / NULLIF(SUM(active_tours), 0) as avg_days_online_tour,\n",
+        "    SUM(avg_days_online_per_supplier_per_week * active_suppliers)\n",
+        "      * 1.0\n",
+        "      / NULLIF(SUM(active_suppliers), 0) as avg_days_online_supplier\n",
+        "  FROM\n",
+        "    production.supply_analytics.dst_supply_dataset\n",
+        "  WHERE\n",
+        "    array_contains(:country, country_name)\n",
+        "  GROUP BY\n",
+        "    period_window\n",
+        "),\n",
+        "pivot AS (\n",
+        "  SELECT\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN active_tours\n",
+        "      END\n",
+        "    ) as at_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN active_tours\n",
+        "      END\n",
+        "    ) as at_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN active_tours\n",
+        "      END\n",
+        "    ) as at_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN active_tours\n",
+        "      END\n",
+        "    ) as at_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN active_suppliers\n",
+        "      END\n",
+        "    ) as as_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN active_suppliers\n",
+        "      END\n",
+        "    ) as as_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN active_suppliers\n",
+        "      END\n",
+        "    ) as as_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN active_suppliers\n",
+        "      END\n",
+        "    ) as as_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN share_active_tours\n",
+        "      END\n",
+        "    ) as sat_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN share_active_tours\n",
+        "      END\n",
+        "    ) as sat_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN share_active_tours\n",
+        "      END\n",
+        "    ) as sat_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN share_active_tours\n",
+        "      END\n",
+        "    ) as sat_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN share_active_suppliers\n",
+        "      END\n",
+        "    ) as sas_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN share_active_suppliers\n",
+        "      END\n",
+        "    ) as sas_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN share_active_suppliers\n",
+        "      END\n",
+        "    ) as sas_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN share_active_suppliers\n",
+        "      END\n",
+        "    ) as sas_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN avg_days_online_tour\n",
+        "      END\n",
+        "    ) as dot_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN avg_days_online_tour\n",
+        "      END\n",
+        "    ) as dot_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN avg_days_online_tour\n",
+        "      END\n",
+        "    ) as dot_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN avg_days_online_tour\n",
+        "      END\n",
+        "    ) as dot_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN avg_days_online_supplier\n",
+        "      END\n",
+        "    ) as dos_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN avg_days_online_supplier\n",
+        "      END\n",
+        "    ) as dos_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN avg_days_online_supplier\n",
+        "      END\n",
+        "    ) as dos_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN avg_days_online_supplier\n",
+        "      END\n",
+        "    ) as dos_post_cy\n",
+        "  FROM\n",
+        "    agg\n",
+        ")\n",
+        "SELECT\n",
+        "  ((at_post_cy - at_pre_cy) * 1.0 / NULLIF(at_pre_cy, 0))\n",
+        "    - ((at_post_ly - at_pre_ly) * 1.0 / NULLIF(at_pre_ly, 0)) as did_active_tours,\n",
+        "  ((as_post_cy - as_pre_cy) * 1.0 / NULLIF(as_pre_cy, 0))\n",
+        "    - ((as_post_ly - as_pre_ly) * 1.0 / NULLIF(as_pre_ly, 0)) as did_active_suppliers,\n",
+        "  (sat_post_cy - sat_pre_cy) - (sat_post_ly - sat_pre_ly) as did_share_active_tours,\n",
+        "  (sas_post_cy - sas_pre_cy) - (sas_post_ly - sas_pre_ly) as did_share_active_suppliers,\n",
+        "  ((dot_post_cy - dot_pre_cy) * 1.0 / NULLIF(dot_pre_cy, 0))\n",
+        "    - ((dot_post_ly - dot_pre_ly) * 1.0 / NULLIF(dot_pre_ly, 0)) as did_days_online_tour,\n",
+        "  ((dos_post_cy - dos_pre_cy) * 1.0 / NULLIF(dos_pre_cy, 0))\n",
+        "    - ((dos_post_ly - dos_pre_ly) * 1.0 / NULLIF(dos_pre_ly, 0)) as did_days_online_supplier\n",
+        "FROM\n",
+        "  pivot"
+      ],
+      "parameters": [
+        {
+          "displayName": "Country",
+          "keyword": "country",
+          "dataType": "STRING",
+          "complexType": "MULTI",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "Italy"
+                },
+                {
+                  "value": "Spain"
+                },
+                {
+                  "value": "United Kingdom"
+                },
+                {
+                  "value": "Turkey"
+                },
+                {
+                  "value": "Germany"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8c4e869d",
+      "displayName": "DID Pricing Details",
+      "queryLines": [
+        "WITH parity_agg AS (\n",
+        "  SELECT\n",
+        "    period_window,\n",
+        "    SUM(overall_parity_rate * total_impressions)\n",
+        "      / NULLIF(SUM(total_impressions), 0) as overall_parity,\n",
+        "    SUM(supplier_parity_rate * total_impressions)\n",
+        "      / NULLIF(SUM(total_impressions), 0) as supplier_parity,\n",
+        "    SUM(viator_parity_rate * total_impressions) / NULLIF(SUM(total_impressions), 0) as viator_parity\n",
+        "  FROM\n",
+        "    production.supply_analytics.dst_price_parity_dataset\n",
+        "  WHERE\n",
+        "    array_contains(:country, country_name)\n",
+        "  GROUP BY\n",
+        "    period_window\n",
+        "),\n",
+        "price_agg AS (\n",
+        "  SELECT\n",
+        "    period_window,\n",
+        "    SUM(suppliers_changed_3m) * 1.0 / NULLIF(SUM(total_suppliers), 0) as pct_changed_3m,\n",
+        "    SUM(suppliers_changed_6m) * 1.0 / NULLIF(SUM(total_suppliers), 0) as pct_changed_6m,\n",
+        "    SUM(suppliers_changed_12m) * 1.0 / NULLIF(SUM(total_suppliers), 0) as pct_changed_12m,\n",
+        "    AVG(median_final_red_3m) as med_price_3m,\n",
+        "    AVG(median_final_red_6m) as med_price_6m,\n",
+        "    AVG(median_final_red_12m) as med_price_12m\n",
+        "  FROM\n",
+        "    production.supply_analytics.dst_price_change_dataset\n",
+        "  WHERE\n",
+        "    array_contains(:country, country_name)\n",
+        "  GROUP BY\n",
+        "    period_window\n",
+        "),\n",
+        "parity_pivot AS (\n",
+        "  SELECT\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN overall_parity\n",
+        "      END\n",
+        "    ) as op_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN overall_parity\n",
+        "      END\n",
+        "    ) as op_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN overall_parity\n",
+        "      END\n",
+        "    ) as op_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN overall_parity\n",
+        "      END\n",
+        "    ) as op_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN supplier_parity\n",
+        "      END\n",
+        "    ) as sp_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN supplier_parity\n",
+        "      END\n",
+        "    ) as sp_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN supplier_parity\n",
+        "      END\n",
+        "    ) as sp_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN supplier_parity\n",
+        "      END\n",
+        "    ) as sp_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN viator_parity\n",
+        "      END\n",
+        "    ) as vp_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN viator_parity\n",
+        "      END\n",
+        "    ) as vp_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN viator_parity\n",
+        "      END\n",
+        "    ) as vp_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN viator_parity\n",
+        "      END\n",
+        "    ) as vp_post_cy\n",
+        "  FROM\n",
+        "    parity_agg\n",
+        "),\n",
+        "price_pivot AS (\n",
+        "  SELECT\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN pct_changed_3m\n",
+        "      END\n",
+        "    ) as pc3_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN pct_changed_3m\n",
+        "      END\n",
+        "    ) as pc3_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN pct_changed_3m\n",
+        "      END\n",
+        "    ) as pc3_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN pct_changed_3m\n",
+        "      END\n",
+        "    ) as pc3_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN pct_changed_6m\n",
+        "      END\n",
+        "    ) as pc6_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN pct_changed_6m\n",
+        "      END\n",
+        "    ) as pc6_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN pct_changed_6m\n",
+        "      END\n",
+        "    ) as pc6_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN pct_changed_6m\n",
+        "      END\n",
+        "    ) as pc6_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN pct_changed_12m\n",
+        "      END\n",
+        "    ) as pc12_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN pct_changed_12m\n",
+        "      END\n",
+        "    ) as pc12_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN pct_changed_12m\n",
+        "      END\n",
+        "    ) as pc12_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN pct_changed_12m\n",
+        "      END\n",
+        "    ) as pc12_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN med_price_3m\n",
+        "      END\n",
+        "    ) as mp3_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN med_price_3m\n",
+        "      END\n",
+        "    ) as mp3_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN med_price_3m\n",
+        "      END\n",
+        "    ) as mp3_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN med_price_3m\n",
+        "      END\n",
+        "    ) as mp3_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN med_price_6m\n",
+        "      END\n",
+        "    ) as mp6_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN med_price_6m\n",
+        "      END\n",
+        "    ) as mp6_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN med_price_6m\n",
+        "      END\n",
+        "    ) as mp6_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN med_price_6m\n",
+        "      END\n",
+        "    ) as mp6_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN med_price_12m\n",
+        "      END\n",
+        "    ) as mp12_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN med_price_12m\n",
+        "      END\n",
+        "    ) as mp12_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN med_price_12m\n",
+        "      END\n",
+        "    ) as mp12_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN med_price_12m\n",
+        "      END\n",
+        "    ) as mp12_post_cy\n",
+        "  FROM\n",
+        "    price_agg\n",
+        ")\n",
+        "SELECT\n",
+        "  (op_post_cy - op_pre_cy) - (op_post_ly - op_pre_ly) as did_overall_parity,\n",
+        "  (sp_post_cy - sp_pre_cy) - (sp_post_ly - sp_pre_ly) as did_supplier_parity,\n",
+        "  (vp_post_cy - vp_pre_cy) - (vp_post_ly - vp_pre_ly) as did_viator_parity,\n",
+        "  (pc3_post_cy - pc3_pre_cy) - (pc3_post_ly - pc3_pre_ly) as did_pct_changed_3m,\n",
+        "  (pc6_post_cy - pc6_pre_cy) - (pc6_post_ly - pc6_pre_ly) as did_pct_changed_6m,\n",
+        "  (pc12_post_cy - pc12_pre_cy) - (pc12_post_ly - pc12_pre_ly) as did_pct_changed_12m,\n",
+        "  ((mp3_post_cy - mp3_pre_cy) / NULLIF(mp3_pre_cy, 0))\n",
+        "    - ((mp3_post_ly - mp3_pre_ly) / NULLIF(mp3_pre_ly, 0)) as did_med_price_3m,\n",
+        "  ((mp6_post_cy - mp6_pre_cy) / NULLIF(mp6_pre_cy, 0))\n",
+        "    - ((mp6_post_ly - mp6_pre_ly) / NULLIF(mp6_pre_ly, 0)) as did_med_price_6m,\n",
+        "  ((mp12_post_cy - mp12_pre_cy) / NULLIF(mp12_pre_cy, 0))\n",
+        "    - ((mp12_post_ly - mp12_pre_ly) / NULLIF(mp12_pre_ly, 0)) as did_med_price_12m\n",
+        "FROM\n",
+        "  parity_pivot CROSS JOIN price_pivot"
+      ],
+      "parameters": [
+        {
+          "displayName": "Country",
+          "keyword": "country",
+          "dataType": "STRING",
+          "complexType": "MULTI",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "Italy"
+                },
+                {
+                  "value": "Spain"
+                },
+                {
+                  "value": "United Kingdom"
+                },
+                {
+                  "value": "Turkey"
+                },
+                {
+                  "value": "Germany"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "d78665b1",
+      "displayName": "DID Demand Quality Details",
+      "queryLines": [
+        "WITH session_agg AS (\n",
+        "  SELECT\n",
+        "    period_window,\n",
+        "    SUM(bookings) as total_bookings,\n",
+        "    SUM(visitors) as total_visitors,\n",
+        "    SUM(clicks) as total_clicks,\n",
+        "    SUM(impressions) as total_impressions,\n",
+        "    SUM(add_to_cart_visitors) as total_atc,\n",
+        "    SUM(unavailability_visitors) as total_unavail\n",
+        "  FROM\n",
+        "    production.supply_analytics.dst_session_performance_dataset\n",
+        "  WHERE\n",
+        "    array_contains(:country, country_name)\n",
+        "  GROUP BY\n",
+        "    period_window\n",
+        "),\n",
+        "cancel_agg AS (\n",
+        "  SELECT\n",
+        "    period_window,\n",
+        "    SUM(cancelled_bookings) as cancelled_bookings,\n",
+        "    SUM(total_bookings) as total_bookings,\n",
+        "    SUM(cancelled_nr) as cancelled_nr,\n",
+        "    SUM(total_nr) as total_nr\n",
+        "  FROM\n",
+        "    production.supply_analytics.dst_cancellation_dataset\n",
+        "  WHERE\n",
+        "    array_contains(:country, country_name)\n",
+        "  GROUP BY\n",
+        "    period_window\n",
+        "),\n",
+        "session_rates AS (\n",
+        "  SELECT\n",
+        "    period_window,\n",
+        "    total_bookings * 1.0 / NULLIF(total_visitors, 0) as conversion_rate,\n",
+        "    total_atc * 1.0 / NULLIF(total_visitors, 0) as atc_rate,\n",
+        "    total_clicks * 1.0 / NULLIF(total_impressions, 0) as ctr,\n",
+        "    total_unavail * 1.0 / NULLIF(total_visitors, 0) as unavail_rate\n",
+        "  FROM\n",
+        "    session_agg\n",
+        "),\n",
+        "cancel_rates AS (\n",
+        "  SELECT\n",
+        "    period_window,\n",
+        "    cancelled_bookings * 1.0 / NULLIF(total_bookings, 0) as cancel_rate,\n",
+        "    cancelled_nr * 1.0 / NULLIF(total_nr, 0) as cancel_rate_nr\n",
+        "  FROM\n",
+        "    cancel_agg\n",
+        "),\n",
+        "session_pivot AS (\n",
+        "  SELECT\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN conversion_rate\n",
+        "      END\n",
+        "    ) as cr_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN conversion_rate\n",
+        "      END\n",
+        "    ) as cr_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN conversion_rate\n",
+        "      END\n",
+        "    ) as cr_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN conversion_rate\n",
+        "      END\n",
+        "    ) as cr_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN atc_rate\n",
+        "      END\n",
+        "    ) as atc_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN atc_rate\n",
+        "      END\n",
+        "    ) as atc_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN atc_rate\n",
+        "      END\n",
+        "    ) as atc_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN atc_rate\n",
+        "      END\n",
+        "    ) as atc_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN ctr\n",
+        "      END\n",
+        "    ) as ctr_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN ctr\n",
+        "      END\n",
+        "    ) as ctr_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN ctr\n",
+        "      END\n",
+        "    ) as ctr_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN ctr\n",
+        "      END\n",
+        "    ) as ctr_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN unavail_rate\n",
+        "      END\n",
+        "    ) as ur_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN unavail_rate\n",
+        "      END\n",
+        "    ) as ur_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN unavail_rate\n",
+        "      END\n",
+        "    ) as ur_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN unavail_rate\n",
+        "      END\n",
+        "    ) as ur_post_cy\n",
+        "  FROM\n",
+        "    session_rates\n",
+        "),\n",
+        "cancel_pivot AS (\n",
+        "  SELECT\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN cancel_rate\n",
+        "      END\n",
+        "    ) as canc_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN cancel_rate\n",
+        "      END\n",
+        "    ) as canc_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN cancel_rate\n",
+        "      END\n",
+        "    ) as canc_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN cancel_rate\n",
+        "      END\n",
+        "    ) as canc_post_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_LY' THEN cancel_rate_nr\n",
+        "      END\n",
+        "    ) as cnr_pre_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_LY' THEN cancel_rate_nr\n",
+        "      END\n",
+        "    ) as cnr_post_ly,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'PRE_CY' THEN cancel_rate_nr\n",
+        "      END\n",
+        "    ) as cnr_pre_cy,\n",
+        "    MAX(\n",
+        "      CASE\n",
+        "        WHEN period_window = 'POST_CY' THEN cancel_rate_nr\n",
+        "      END\n",
+        "    ) as cnr_post_cy\n",
+        "  FROM\n",
+        "    cancel_rates\n",
+        ")\n",
+        "SELECT\n",
+        "  (cr_post_cy - cr_pre_cy) - (cr_post_ly - cr_pre_ly) as did_conversion,\n",
+        "  (atc_post_cy - atc_pre_cy) - (atc_post_ly - atc_pre_ly) as did_atc,\n",
+        "  (ctr_post_cy - ctr_pre_cy) - (ctr_post_ly - ctr_pre_ly) as did_ctr,\n",
+        "  (canc_post_cy - canc_pre_cy) - (canc_post_ly - canc_pre_ly) as did_cancel_rate,\n",
+        "  (cnr_post_cy - cnr_pre_cy) - (cnr_post_ly - cnr_pre_ly) as did_cancel_rate_nr,\n",
+        "  (ur_post_cy - ur_pre_cy) - (ur_post_ly - ur_pre_ly) as did_unavailability\n",
+        "FROM\n",
+        "  session_pivot CROSS JOIN cancel_pivot"
+      ],
+      "parameters": [
+        {
+          "displayName": "Country",
+          "keyword": "country",
+          "dataType": "STRING",
+          "complexType": "MULTI",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "Italy"
+                },
+                {
+                  "value": "Spain"
+                },
+                {
+                  "value": "United Kingdom"
+                },
+                {
+                  "value": "Turkey"
+                },
+                {
+                  "value": "Germany"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "0e72f143",
+      "displayName": "Executive Summary",
+      "layout": [
+        {
+          "widget": {
+            "name": "ae8c2d57",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## DST Pass-Through: Impact Monitoring\n",
+                "\n",
+                "**Context**: We are passing through Digital Services Tax (DST) costs to suppliers in impacted countries (Italy, Spain, UK, Turkey, Germany). This dashboard monitors whether the policy change is affecting marketplace performance.\n",
+                "\n",
+                "**Methodology**: Each metric below uses a **Difference-in-Differences** approach — we compare the pre-to-post change this year against the same change last year. Last year acts as a **control** to remove seasonality, isolating the causal policy effect. **Green** = CY outperformed LY patterns (favorable). **Red** = CY underperformed (unfavorable). For cancellation rate, the logic is reversed (lower cancellations = better)."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "did_bookings",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "8b598814",
+                  "fields": [
+                    {
+                      "name": "max(did_bookings)",
+                      "expression": "MAX(`did_bookings`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Bookings — Policy Impact (YoY Adjusted)",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(did_bookings)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  },
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": ">="
+                        },
+                        "color": "#2E7D32"
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": "<"
+                        },
+                        "color": "#C62828"
+                      }
+                    ]
+                  },
+                  "displayName": "DID Bookings"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 5,
+            "width": 6,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "did_nr",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "8b598814",
+                  "fields": [
+                    {
+                      "name": "max(did_nr)",
+                      "expression": "MAX(`did_nr`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Net Revenue — Policy Impact (YoY Adjusted)",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(did_nr)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  },
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": ">="
+                        },
+                        "color": "#2E7D32"
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": "<"
+                        },
+                        "color": "#C62828"
+                      }
+                    ]
+                  },
+                  "displayName": "DID Net Revenue"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 6,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "section_primary",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Primary Outcome Metrics — Is the policy impacting realized Profit / demand?"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "section_signals",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Leading Indicators — What's directly impacting NR & Bookings?\n",
+                "\n",
+                "All metrics below are **DID-adjusted** (YoY controlled). They capture the transmission channels through which DST pass-through could affect outcomes.\n",
+                "\n",
+                "**Fwd Availability (6m)** = are suppliers reducing timeslots for upcoming travel? **Price Parity** = is GYG losing competitiveness vs. competitors? **Fwd Price (6m)** = are suppliers raising prices for upcoming travel dates? **Conversion** = is demand eroding? **Cancellation** = are quality issues emerging?"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 12,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "did_parity",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "6a349804",
+                  "fields": [
+                    {
+                      "name": "max(did_overall_parity)",
+                      "expression": "MAX(`did_overall_parity`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Overall Price Parity",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(did_overall_parity)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  },
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": ">="
+                        },
+                        "color": "#2E7D32"
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": "<"
+                        },
+                        "color": "#C62828"
+                      }
+                    ]
+                  },
+                  "displayName": "Overall Parity"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 14,
+            "width": 4,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "did_cancellation",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "6a349804",
+                  "fields": [
+                    {
+                      "name": "max(did_cancellation_rate)",
+                      "expression": "MAX(`did_cancellation_rate`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Cancellation Rate",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(did_cancellation_rate)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  },
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": "<="
+                        },
+                        "color": "#2E7D32"
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": ">"
+                        },
+                        "color": "#C62828"
+                      }
+                    ]
+                  },
+                  "displayName": "Cancellation Rate"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 17,
+            "width": 6,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "did_conversion",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "6a349804",
+                  "fields": [
+                    {
+                      "name": "max(did_conversion_rate)",
+                      "expression": "MAX(`did_conversion_rate`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Conversion Rate",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(did_conversion_rate)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  },
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": ">="
+                        },
+                        "color": "#2E7D32"
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": "<"
+                        },
+                        "color": "#C62828"
+                      }
+                    ]
+                  },
+                  "displayName": "Conversion Rate"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 17,
+            "width": 6,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "did_availability",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "6a349804",
+                  "fields": [
+                    {
+                      "name": "max(did_availability)",
+                      "expression": "MAX(`did_availability`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Forward Availability (6m Timeslots)",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(did_availability)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  },
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": ">="
+                        },
+                        "color": "#2E7D32"
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": "<"
+                        },
+                        "color": "#C62828"
+                      }
+                    ]
+                  },
+                  "displayName": "Availability 6m"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 4,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "did_price",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "6a349804",
+                  "fields": [
+                    {
+                      "name": "max(did_median_price_6m)",
+                      "expression": "MAX(`did_median_price_6m`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Forward Price (6m)",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(did_median_price_6m)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  },
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": ">"
+                        },
+                        "color": "#C62828"
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": "<="
+                        },
+                        "color": "#2E7D32"
+                      }
+                    ]
+                  },
+                  "displayName": "Median Price 6m"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 14,
+            "width": 4,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "did_visitors",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "6a349804",
+                  "fields": [
+                    {
+                      "name": "max(did_visitors)",
+                      "expression": "MAX(`did_visitors`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Total Visitors / Customers",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(did_visitors)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  },
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": ">="
+                        },
+                        "color": "#2E7D32"
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": "<"
+                        },
+                        "color": "#C62828"
+                      }
+                    ]
+                  },
+                  "displayName": "Visitors"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "did_aov",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "6a349804",
+                  "fields": [
+                    {
+                      "name": "max(did_aov)",
+                      "expression": "MAX(`did_aov`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Average Order Value (GMV/Booking)",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(did_aov)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  },
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": ">="
+                        },
+                        "color": "#2E7D32"
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": "<"
+                        },
+                        "color": "#C62828"
+                      }
+                    ]
+                  },
+                  "displayName": "AOV"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 8,
+            "width": 6,
+            "height": 3
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "b8c0ce4f",
+      "displayName": "Global Filters",
+      "layout": [
+        {
+          "widget": {
+            "name": "country_filter",
+            "queries": [
+              {
+                "name": "dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bcde12d1ca1b201ffc8b1a4e7b6_country_name",
+                "query": {
+                  "datasetName": "b36386e3",
+                  "fields": [
+                    {
+                      "name": "country_name",
+                      "expression": "`country_name`"
+                    },
+                    {
+                      "name": "country_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bcdec201c4aa7a18e336bec4ff8_country_name",
+                "query": {
+                  "datasetName": "feae45be",
+                  "fields": [
+                    {
+                      "name": "country_name",
+                      "expression": "`country_name`"
+                    },
+                    {
+                      "name": "country_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bcdf4971790830e45c22f8a0cac_country_name",
+                "query": {
+                  "datasetName": "26b28a38",
+                  "fields": [
+                    {
+                      "name": "country_name",
+                      "expression": "`country_name`"
+                    },
+                    {
+                      "name": "country_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bce390c1d50a0e716fb0bcb2d10_country_name",
+                "query": {
+                  "datasetName": "d4d40117",
+                  "fields": [
+                    {
+                      "name": "country_name",
+                      "expression": "`country_name`"
+                    },
+                    {
+                      "name": "country_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bce46bc1788b9e3c6aba7d0ab80_country_name",
+                "query": {
+                  "datasetName": "a2ccb662",
+                  "fields": [
+                    {
+                      "name": "country_name",
+                      "expression": "`country_name`"
+                    },
+                    {
+                      "name": "country_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bd01b0117ed8f4e00acb44f1277_country_name",
+                "query": {
+                  "datasetName": "da819d73",
+                  "fields": [
+                    {
+                      "name": "country_name",
+                      "expression": "`country_name`"
+                    },
+                    {
+                      "name": "country_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bd57df01491bd3fddc0765d6052_country",
+                "query": {
+                  "datasetName": "8b598814",
+                  "parameters": [
+                    {
+                      "name": "country",
+                      "keyword": "country"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bd78b9e16bc9c8aeee76f3fb03f_country",
+                "query": {
+                  "datasetName": "6a349804",
+                  "parameters": [
+                    {
+                      "name": "country",
+                      "keyword": "country"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bdec4b211cf9c4cc2c79f4bb2d0_country",
+                "query": {
+                  "datasetName": "5f1d9f71",
+                  "parameters": [
+                    {
+                      "name": "country",
+                      "keyword": "country"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bdf62da192fb4222ef8f444b042_country",
+                "query": {
+                  "datasetName": "8c4e869d",
+                  "parameters": [
+                    {
+                      "name": "country",
+                      "keyword": "country"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bdfa40717eb8967ba03db2c7935_country",
+                "query": {
+                  "datasetName": "d78665b1",
+                  "parameters": [
+                    {
+                      "name": "country",
+                      "keyword": "country"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Country",
+                "showTitle": true
+              },
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "country_name",
+                    "queryName": "dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bcde12d1ca1b201ffc8b1a4e7b6_country_name"
+                  },
+                  {
+                    "fieldName": "country_name",
+                    "queryName": "dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bcdec201c4aa7a18e336bec4ff8_country_name"
+                  },
+                  {
+                    "fieldName": "country_name",
+                    "queryName": "dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bcdf4971790830e45c22f8a0cac_country_name"
+                  },
+                  {
+                    "fieldName": "country_name",
+                    "queryName": "dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bce390c1d50a0e716fb0bcb2d10_country_name"
+                  },
+                  {
+                    "fieldName": "country_name",
+                    "queryName": "dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bce46bc1788b9e3c6aba7d0ab80_country_name"
+                  },
+                  {
+                    "fieldName": "country_name",
+                    "queryName": "dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bd01b0117ed8f4e00acb44f1277_country_name"
+                  },
+                  {
+                    "parameterName": "country",
+                    "queryName": "parameter_dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bd57df01491bd3fddc0765d6052_country"
+                  },
+                  {
+                    "parameterName": "country",
+                    "queryName": "parameter_dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bd78b9e16bc9c8aeee76f3fb03f_country"
+                  },
+                  {
+                    "parameterName": "country",
+                    "queryName": "parameter_dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bdec4b211cf9c4cc2c79f4bb2d0_country"
+                  },
+                  {
+                    "parameterName": "country",
+                    "queryName": "parameter_dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bdf62da192fb4222ef8f444b042_country"
+                  },
+                  {
+                    "parameterName": "country",
+                    "queryName": "parameter_dashboards/01f12b7d53e51ea8b97adaba87c6c038/datasets/01f12bdfa40717eb8967ba03db2c7935_country"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 3,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "supply_health",
+      "displayName": "Supply Health",
+      "layout": [
+        {
+          "widget": {
+            "name": "supply_text",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Supply Continuity — Are suppliers leaving or reducing commitment?\n",
+                "\n",
+                "**Extensive Margin** (top): Are suppliers and tours leaving the platform? We track **active suppliers** (≥1 active tour/week) and **active tours** across each period window. Compare the PRE→POST shift in CY vs LY to see the DID effect.\n",
+                "\n",
+                "**Intensive Margin** (bottom): Among those who stayed, is supply intensity changing? **Share active** shows the proportion of total tours that are active. **Avg days online** shows how many days per week tours are available. A CY decline beyond LY patterns = suppliers reducing commitment."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "active_tours_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "a2ccb662",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "sum(active_tours)",
+                      "expression": "SUM(`active_tours`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Active Tours",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(active_tours)",
+                  "format": {
+                    "type": "number-plain",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    },
+                    "abbreviation": "compact"
+                  },
+                  "displayName": "Active Tours",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "active_suppliers_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "a2ccb662",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "sum(active_suppliers)",
+                      "expression": "SUM(`active_suppliers`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Active Suppliers",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(active_suppliers)",
+                  "format": {
+                    "type": "number-plain",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    },
+                    "abbreviation": "compact"
+                  },
+                  "displayName": "Active Suppliers",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 3,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "share_active_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "a2ccb662",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(share_active_tours)",
+                      "expression": "AVG(`share_active_tours`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Share of Tours Active (%)",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(share_active_tours)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  },
+                  "displayName": "Share Active Tours",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 9,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "days_online_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "a2ccb662",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(avg_days_online_per_tour_per_week)",
+                      "expression": "AVG(`avg_days_online_per_tour_per_week`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Avg Days Online / Tour / Week",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(avg_days_online_per_tour_per_week)",
+                  "format": {
+                    "type": "number-plain",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    },
+                    "abbreviation": "none"
+                  },
+                  "displayName": "Days Online",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 9,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "share_active_suppliers_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "a2ccb662",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(share_active_suppliers)",
+                      "expression": "AVG(`share_active_suppliers`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Share of Suppliers Active (%)",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(share_active_suppliers)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  },
+                  "displayName": "Share Active Suppliers",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 15,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "days_online_supplier_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "a2ccb662",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(avg_days_online_per_supplier_per_week)",
+                      "expression": "AVG(`avg_days_online_per_supplier_per_week`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Avg Days Online / Supplier / Week",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(avg_days_online_per_supplier_per_week)",
+                  "format": {
+                    "type": "number-plain",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    },
+                    "abbreviation": "none"
+                  },
+                  "displayName": "Days Online (Supplier)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 15,
+            "width": 6,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "pricing",
+      "displayName": "Pricing & Competitiveness",
+      "layout": [
+        {
+          "widget": {
+            "name": "pricing_text",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Pricing & Competitiveness — Are prices and parity changing?\n",
+                "\n",
+                "**Price Parity** (top row): Are GYG prices remaining competitive? We compare parity rates against supplier direct channels and competitors (Viator, Headout). A **drop in parity** post-policy means GYG is becoming less price-competitive — potentially because suppliers raised GYG prices to offset DST while keeping competitor prices unchanged.\n",
+                "\n",
+                "**Price Changes** (middle row): What proportion of suppliers adjusted prices within 3M, 6M, and 12M forward travel windows? An increase post-policy suggests suppliers are passing costs to consumers.\n",
+                "\n",
+                "**Median Forward Prices** (bottom row): Actual median price levels for upcoming travel dates across 3M, 6M, and 12M windows. Compare CY PRE→POST vs LY PRE→POST to see the DID effect on price levels."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "overall_parity",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "d4d40117",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(overall_parity_rate)",
+                      "expression": "AVG(`overall_parity_rate`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Overall Parity Rate",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(overall_parity_rate)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  },
+                  "displayName": "Overall Parity",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "supplier_parity",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "d4d40117",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(supplier_parity_rate)",
+                      "expression": "AVG(`supplier_parity_rate`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Supplier Direct Parity",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(supplier_parity_rate)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  },
+                  "displayName": "Supplier Parity",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 4,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "viator_parity",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "d4d40117",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(viator_parity_rate)",
+                      "expression": "AVG(`viator_parity_rate`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Viator Parity",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(viator_parity_rate)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  },
+                  "displayName": "Viator Parity",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 4,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "pct_changed_3m",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "da819d73",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(suppliers_pct_3m)",
+                      "expression": "AVG(`suppliers_pct_3m`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "% Suppliers Changed Price (3m)",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(suppliers_pct_3m)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  },
+                  "displayName": "% Changed 3m",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "pct_changed_6m",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "da819d73",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(suppliers_pct_6m)",
+                      "expression": "AVG(`suppliers_pct_6m`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "% Suppliers Changed Price (6m)",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(suppliers_pct_6m)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  },
+                  "displayName": "% Changed 6m",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 10,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "pct_changed_12m",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "da819d73",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(suppliers_pct_12m)",
+                      "expression": "AVG(`suppliers_pct_12m`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "% Suppliers Changed Price (12m)",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(suppliers_pct_12m)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    }
+                  },
+                  "displayName": "% Changed 12m",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 10,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "median_price_3m",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "da819d73",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(median_final_red_3m)",
+                      "expression": "AVG(`median_final_red_3m`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Median Forward Price (3m)",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(median_final_red_3m)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "EUR",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    },
+                    "abbreviation": "none"
+                  },
+                  "displayName": "Median Price 3m",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 16,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "median_price_6m",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "da819d73",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(median_final_red_6m)",
+                      "expression": "AVG(`median_final_red_6m`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Median Forward Price (6m)",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(median_final_red_6m)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "EUR",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    },
+                    "abbreviation": "none"
+                  },
+                  "displayName": "Median Price 6m",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 16,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "median_price_12m",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "da819d73",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(median_final_red_12m)",
+                      "expression": "AVG(`median_final_red_12m`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Median Forward Price (12m)",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(median_final_red_12m)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "EUR",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    },
+                    "abbreviation": "none"
+                  },
+                  "displayName": "Median Price 12m",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 16,
+            "width": 4,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "demand_quality",
+      "displayName": "Demand & Quality",
+      "layout": [
+        {
+          "widget": {
+            "name": "demand_text",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Demand & Quality Guardrails — Are customers affected?\n",
+                "\n",
+                "**Demand Funnel** (top row): Is the DST-driven price environment suppressing demand? We track **conversion rate** (bookings/visitors), **add-to-cart rate**, and **click-through rate** across period windows. A CY decline beyond LY patterns = demand erosion from price increases or reduced competitiveness.\n",
+                "\n",
+                "**Quality Guardrails** (bottom row): Are cancellations increasing? We track **cancellation rate** by bookings and by NR, plus **unavailability issue rate** (visitors hitting unavailable inventory). Rising cancellations or unavailability signal supplier experience deterioration that could compound demand damage."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "conversion_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "b36386e3",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(conversion_rate)",
+                      "expression": "AVG(`conversion_rate`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Conversion Rate",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(conversion_rate)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    }
+                  },
+                  "displayName": "Conversion Rate",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "atc_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "b36386e3",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(add_to_cart_rate)",
+                      "expression": "AVG(`add_to_cart_rate`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Add-to-Cart Rate",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(add_to_cart_rate)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    }
+                  },
+                  "displayName": "Add-to-Cart Rate",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 4,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "ctr_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "b36386e3",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(click_through_rate)",
+                      "expression": "AVG(`click_through_rate`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Click-Through Rate",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(click_through_rate)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    }
+                  },
+                  "displayName": "CTR",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 4,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "cancel_bookings_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "26b28a38",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(cancellation_rate)",
+                      "expression": "AVG(`cancellation_rate`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Cancellation Rate (Bookings)",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(cancellation_rate)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    }
+                  },
+                  "displayName": "Cancel Rate",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "cancel_nr_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "26b28a38",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(cancellation_rate_nr)",
+                      "expression": "AVG(`cancellation_rate_nr`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Cancellation Rate (NR-Weighted)",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(cancellation_rate_nr)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    }
+                  },
+                  "displayName": "Cancel Rate NR",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 10,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "unavail_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "b36386e3",
+                  "fields": [
+                    {
+                      "name": "period_window",
+                      "expression": "`period_window`"
+                    },
+                    {
+                      "name": "avg(unavailability_issue_rate)",
+                      "expression": "AVG(`unavailability_issue_rate`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Unavailability Issue Rate",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "period_window",
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "custom-order",
+                      "orderedValues": [
+                        "PRE_LY",
+                        "POST_LY",
+                        "PRE_CY",
+                        "POST_CY"
+                      ]
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(unavailability_issue_rate)",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    }
+                  },
+                  "displayName": "Unavailability Rate",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "period_window",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Period",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "PRE_LY",
+                        "color": "#90A4AE"
+                      },
+                      {
+                        "value": "POST_LY",
+                        "color": "#607D8B"
+                      },
+                      {
+                        "value": "PRE_CY",
+                        "color": "#64B5F6"
+                      },
+                      {
+                        "value": "POST_CY",
+                        "color": "#1565C0"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 10,
+            "width": 4,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
+}

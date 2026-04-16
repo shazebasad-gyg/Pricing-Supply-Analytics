@@ -1,3 +1,5 @@
+CREATE OR REPLACE TABLE production.supply_analytics.dst_price_parity_weekly AS
+
 WITH params AS (
   SELECT 
     DATE '2025-01-01' AS yoy_pre_start_date,
