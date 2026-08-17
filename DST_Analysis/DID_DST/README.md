@@ -125,11 +125,13 @@ Per-scenario DELETE + INSERT (running one scenario never touches the other):
 
 ## 8. Runbook
 
-- **Real run:** set `INTERVENTION_DATE = '2026-08-03'` → Run All → confirm the publish cell
-  prints `published scenario 'real': …`. Safe **any day of the week**: week spines stop at
-  the current week, and last-year comparisons are capped at the same elapsed days
-  (partial-week YoY compares Mon–Wed vs Mon–Wed). Re-run daily/weekly = the dashboard's
-  measurement-layer refresh.
+- **Real runs are AUTOMATED**: Databricks job `dst_impact_did_daily` (id 667123464370801)
+  runs this notebook from Git `main` every day at 07:30 Europe/Berlin on a small job
+  cluster, with `intervention_date = 2026-08-03`, and emails the owner on failure.
+  Pushing to `main` deploys the next run — no job edits needed. Manual real runs remain
+  possible locally (set the date, Run All) and are safe **any day of the week**: week
+  spines stop at the current week, and last-year comparisons are capped at the same
+  elapsed days (partial-week YoY compares Mon–Wed vs Mon–Wed).
 - **Placebo re-run:** only after population/method changes, so baselines stay comparable.
 - Reading discipline: week-one gaps are direction-only; estimates firm up by ~3 complete
   post-weeks; dose ladder sanity check TR > FR > IT > GB > ES; below the noise band,
