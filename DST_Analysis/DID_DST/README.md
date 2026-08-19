@@ -126,8 +126,10 @@ Per-scenario DELETE + INSERT (running one scenario never touches the other):
 ## 8. Runbook
 
 - **Real runs are AUTOMATED**: Databricks job `dst_impact_did_daily` (id 667123464370801)
-  runs this notebook from Git `main` every day at 07:30 Europe/Berlin on a small job
-  cluster, with `intervention_date = 2026-08-03`, and emails the owner on failure.
+  runs this notebook from Git `main` every day at 07:30 Europe/Berlin, with
+  `intervention_date = 2026-08-03`, and emails the owner on failure. Compute: m5.xlarge
+  x2 workers under the UC job policy, 3h timeout (the run needs ~80 min on a small
+  cluster - the original 90-min timeout caused a timeout failure on 2026-08-18).
   Pushing to `main` deploys the next run — no job edits needed. Manual real runs remain
   possible locally (set the date, Run All) and are safe **any day of the week**: week
   spines stop at the current week, and last-year comparisons are capped at the same
