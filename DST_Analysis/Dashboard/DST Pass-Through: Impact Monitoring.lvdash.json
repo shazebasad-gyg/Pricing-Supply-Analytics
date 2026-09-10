@@ -1134,9 +1134,9 @@
               "lines": [
                 "## DST Pass-Through: Impact Monitoring\n",
                 "\n",
-                "**Context**: We are passing through Digital Services Tax (DST) costs to suppliers in impacted countries (Italy, Spain, UK, Turkey, Germany). This dashboard monitors whether the policy change is affecting marketplace performance.\n",
+                "**Context**: We are passing through Digital Services Tax (DST) costs to suppliers in impacted countries (Italy, Spain, UK, Turkey, France). This dashboard monitors whether the policy change is affecting marketplace performance.\n",
                 "\n",
-                "**Methodology**: Each metric below uses a **Difference-in-Differences** approach — we compare the pre-to-post change this year against the same change last year. Last year acts as a **control** to remove seasonality, isolating the causal policy effect. **Green** = CY outperformed LY patterns (favorable). **Red** = CY underperformed (unfavorable). For cancellation rate, the logic is reversed (lower cancellations = better)."
+                "**Methodology**: The metrics below are **descriptive year-over-year pre/post monitoring**, not causal Difference-in-Differences estimates. Last year provides seasonality context but is not an untreated control group. The confirmatory causal estimate is the pooled raw-net-revenue Synthetic DiD published separately in `production.supply_analytics.dst_sdid_summary`. **Green** = CY outperformed LY patterns (favorable). **Red** = CY underperformed (unfavorable). For cancellation rate, the logic is reversed (lower cancellations = better)."
               ]
             }
           },
