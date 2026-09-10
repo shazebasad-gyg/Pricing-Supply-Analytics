@@ -76,10 +76,14 @@ weekdays last year, but is excluded from the confirmatory ATT until Mon–Sun is
    difference using only complete post weeks. The pooled treatment path weights the five
    treated countries by their frozen supplier counts, so the per-supplier ATT scales
    directly to treated-cohort EUR. No YoY transformation or normalization is used.
-2. **Secondary normalized synthetic controls:** the existing operational and demand series
-   remain normalized to their own pre-period means so their directional paths remain
-   comparable across differently sized countries. These are exploratory, not additional
-   causal claims. Primary runs use 52 weeks; `pre_weeks` supports 26/52/78 sensitivity runs.
+2. **Secondary directional synthetic controls:** shares, rates, price indices and YoY
+   ratios are fitted in their original common scales. An additive adjustment aligns each
+   synthetic twin to the treated country's average pre-period level, and the post-period
+   gap is reported in natural units (percentage points for shares/rates; index or ratio
+   points for indices/YoY ratios). Only raw bookings and GMV per supplier retain
+   pre-mean normalization because country scale differences are material. These are
+   exploratory driver measures, not additional causal claims. Primary runs use 52 weeks;
+   `pre_weeks` supports 26/52/78 sensitivity runs.
 3. **Inference and validation:** pooled placebo sensitivity enumerates every 5-of-12
    pseudo-treated donor assignment (792 assignments), reports
    `(1 + exceedances) / (1 + 792)`, and forms a placebo-distribution interval. This is
@@ -130,7 +134,7 @@ rate** (never raw counts); no individual supplier can be attributed to DST — o
 | 4 | 1b8986fc | customer (traffic/conversion) query |
 | 5 | — | merge → `dfm` (week × country panel) |
 | 6–9 | — | descriptive charts |
-| 10 | f75f749e | pooled/country formal raw-NR SDID + directional normalized SCM |
+| 10 | f75f749e | pooled/country formal raw-NR SDID + directional secondary SCM |
 | 11 | — | pooled 5-of-12 placebo sensitivity |
 | 12 | — | 26/52/78-week rolling pre-period validation and fit gates |
 | 13 | — | actual-vs-synthetic panels |
@@ -152,8 +156,10 @@ then applied with one Delta `MERGE` per output. Production is never emptied befo
 - **`production.supply_analytics.dst_synthetic_control_results`** — scenario, metric,
   country: `did_pct_of_pre`, `pre_fit_rmse_pct`, `placebos_larger`, `donor_weights` (JSON),
   `placebo_p_value`, `did_absolute`, `cohort_suppliers`. For backward compatibility these
-  legacy field names remain; only `nr_per_supplier` is formal SDID. Other rows are
-  directional normalized-SCM gaps, and country placebo fields are descriptive ranks.
+  legacy field names remain; only `nr_per_supplier` is formal SDID. For bounded/rate/index
+  and YoY metrics, `did_pct_of_pre` now contains the natural-unit directional gap. It
+  remains a fraction-of-pre gap only for raw bookings/GMV diagnostics. Country placebo
+  fields are descriptive ranks.
 - **`production.supply_analytics.dst_sdid_summary`** — one row per scenario/method version:
   pooled formal-SDID ATT and interval, complete horizon, unit/time weights, country fit
   statuses, indirect base-NR impact, direct DST accrual estimate, and combined weekly EUR.
