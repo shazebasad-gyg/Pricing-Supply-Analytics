@@ -79,13 +79,13 @@ to the same elapsed weekdays, but is excluded from the confirmatory ATT until Mo
    difference using only complete post weeks. The pooled treatment path weights the five
    treated countries by their frozen supplier counts, so the per-supplier ATT scales
    directly to treated-cohort EUR. No YoY transformation or normalization is used.
-2. **Secondary directional synthetic controls:** shares, rates and price indices are
-   fitted in their original common scales. An additive adjustment aligns each
-   synthetic twin to the treated country's average pre-period level, and the post-period
-   gap is reported in natural units (percentage points for shares/rates; index points for
-   prices). Raw bookings, tickets, GMV and visitors per supplier retain pre-mean
-   normalization because country scale differences are material. These are
-   exploratory driver measures, not additional causal claims. Primary runs use 52 weeks;
+2. **Secondary additive synthetic DiD:** every current-period secondary metric uses
+   `(treatment post − treatment pre) − (synthetic post − synthetic pre)` in its observed
+   unit. Donor weights match centered pre-period paths, and an additive level adjustment
+   aligns the synthetic series for display without changing the DiD. There is no
+   pre-mean normalization. Results are bookings/tickets/visitors or EUR per supplier,
+   percentage points for shares/rates, and index points for prices. These are exploratory
+   driver measures, not additional confirmatory claims. Primary runs use 52 weeks;
    `pre_weeks` supports 26/52/78 sensitivity runs.
 3. **Inference and validation:** pooled placebo sensitivity enumerates every 5-of-12
    pseudo-treated donor assignment (792 assignments), reports
@@ -159,10 +159,11 @@ then applied with one Delta `MERGE` per output. Production is never emptied befo
 - **`production.supply_analytics.dst_synthetic_control_results`** — scenario, metric,
   country: `did_pct_of_pre`, `pre_fit_rmse_pct`, `placebos_larger`, `donor_weights` (JSON),
   `placebo_p_value`, `did_absolute`, `cohort_suppliers`. For backward compatibility these
-  legacy field names remain; only `nr_per_supplier` is formal SDID. For bounded/rate/index
-  metrics, `did_pct_of_pre` contains the natural-unit directional gap. It remains a
-  fraction-of-pre gap for raw bookings, tickets, GMV and visitor diagnostics. Country
-  placebo fields are descriptive ranks.
+  legacy field names remain; only `nr_per_supplier` is formal SDID. For every secondary
+  metric, `did_pct_of_pre` now contains the natural-unit additive DiD despite its legacy
+  name. Use `did_absolute` for dashboard presentation; it contains the same per-supplier
+  DiD in story units, including EUR for GMV and prices. Country placebo fields are
+  descriptive ranks.
 - **`production.supply_analytics.dst_sdid_summary`** — one row per scenario/method version:
   pooled formal-SDID ATT and interval, complete horizon, unit/time weights, country fit
   statuses, indirect base-NR impact, direct DST accrual estimate, and combined weekly EUR.
