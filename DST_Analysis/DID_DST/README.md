@@ -44,21 +44,24 @@ to the frozen supplier list, so post-launch/new-tour activity is included and ch
 fit window cannot change cohort membership. Tour attachment is used only for descriptive
 supply, price, customer and supplier-reaction outputs.
 
-## 3. Metrics (23)
+## 3. Metrics
 
 Weekly (Mon–Sun), 52 clean pre-weeks + up to 8 post-weeks around the intervention date,
 by **checkout date**. The mixed launch week beginning 2026-07-27 is excluded because DST
 started on Saturday 2026-08-01; one extra historical week is queried to retain 52 clean
-pre observations. The current post week remains visible as WTD, with the same elapsed
-weekdays last year, but is excluded from the confirmatory ATT until Mon–Sun is complete.
+pre observations. The current post week remains visible as WTD, with every market capped
+to the same elapsed weekdays, but is excluded from the confirmatory ATT until Mon–Sun is complete.
 
 - **Primary confirmatory outcome:** raw NR per frozen cohort supplier. One supplier-weighted
   pooled SDID across all five treated countries is the sole headline estimate. Country SDIDs
   are heterogeneity diagnostics and are gated on pre-fit and rolling holdout quality.
-- **Secondary directional outcomes:** same-cohort YoY ratios (this week ÷ same week last
-  year, −364d) for bookings, tickets, GMV, NR, visitors, conversion, add-to-cart,
-  unavailability, and commission. Raw bookings/GMV and the other operational metrics remain
-  visible as diagnostics; they are not additional confirmatory hypotheses.
+- **Secondary directional outcomes:** current-period bookings, tickets, GMV and visitors
+  per frozen cohort supplier, plus supplier-level conversion, add-to-cart,
+  unavailability and base commission rates. No YoY transformation is used in the modeled
+  outputs. These are driver diagnostics, not additional confirmatory hypotheses.
+- **Customer rates:** calculate each supplier's weekly rate from that supplier's own
+  visitors, then average equally across suppliers with at least one visitor. This prevents
+  the largest suppliers from determining the country rate.
 - **Supply:** % active suppliers, % tours online per supplier, forward availability coverage
   (share of the next 90 days with open slots).
 - **Price (forward-looking):** every Monday, each tour's advertised per-adult price for travel
@@ -76,12 +79,12 @@ weekdays last year, but is excluded from the confirmatory ATT until Mon–Sun is
    difference using only complete post weeks. The pooled treatment path weights the five
    treated countries by their frozen supplier counts, so the per-supplier ATT scales
    directly to treated-cohort EUR. No YoY transformation or normalization is used.
-2. **Secondary directional synthetic controls:** shares, rates, price indices and YoY
-   ratios are fitted in their original common scales. An additive adjustment aligns each
+2. **Secondary directional synthetic controls:** shares, rates and price indices are
+   fitted in their original common scales. An additive adjustment aligns each
    synthetic twin to the treated country's average pre-period level, and the post-period
-   gap is reported in natural units (percentage points for shares/rates; index or ratio
-   points for indices/YoY ratios). Only raw bookings and GMV per supplier retain
-   pre-mean normalization because country scale differences are material. These are
+   gap is reported in natural units (percentage points for shares/rates; index points for
+   prices). Raw bookings, tickets, GMV and visitors per supplier retain pre-mean
+   normalization because country scale differences are material. These are
    exploratory driver measures, not additional causal claims. Primary runs use 52 weeks;
    `pre_weeks` supports 26/52/78 sensitivity runs.
 3. **Inference and validation:** pooled placebo sensitivity enumerates every 5-of-12
@@ -94,8 +97,8 @@ weekdays last year, but is excluded from the confirmatory ATT until Mon–Sun is
    no longer selected. Country estimates failing the 10% in-sample and holdout RMSE gate are
    labelled `inconclusive_fit`.
 4. **Display layer ("story units"):** every series is also published in intuitive units —
-   per-supplier levels for volume metrics (via the same-week-LY base implied by the YoY
-   ratio), EUR per tour for prices, natural units for shares. The primary twin is adjusted
+   current per-supplier levels for volume metrics, EUR per tour for prices and natural
+   units for shares/rates. The primary twin is adjusted
    with the SDID time-weighted pre gap so its complete-post mean gap equals the formal ATT.
    Secondary twin gaps remain directional and are never labelled causal DiD.
 5. **Financial decomposition:** the dedicated summary reports indirect base-NR SDID impact,
@@ -157,9 +160,9 @@ then applied with one Delta `MERGE` per output. Production is never emptied befo
   country: `did_pct_of_pre`, `pre_fit_rmse_pct`, `placebos_larger`, `donor_weights` (JSON),
   `placebo_p_value`, `did_absolute`, `cohort_suppliers`. For backward compatibility these
   legacy field names remain; only `nr_per_supplier` is formal SDID. For bounded/rate/index
-  and YoY metrics, `did_pct_of_pre` now contains the natural-unit directional gap. It
-  remains a fraction-of-pre gap only for raw bookings/GMV diagnostics. Country placebo
-  fields are descriptive ranks.
+  metrics, `did_pct_of_pre` contains the natural-unit directional gap. It remains a
+  fraction-of-pre gap for raw bookings, tickets, GMV and visitor diagnostics. Country
+  placebo fields are descriptive ranks.
 - **`production.supply_analytics.dst_sdid_summary`** — one row per scenario/method version:
   pooled formal-SDID ATT and interval, complete horizon, unit/time weights, country fit
   statuses, indirect base-NR impact, direct DST accrual estimate, and combined weekly EUR.
@@ -173,8 +176,7 @@ then applied with one Delta `MERGE` per output. Production is never emptied befo
   cluster - the original 90-min timeout caused a timeout failure on 2026-08-18).
   Pushing to `main` deploys the next run — no job edits needed. Manual real runs remain
   possible locally (set the date, Run All) and are safe **any day of the week**: week
-  spines stop at the current week, and last-year comparisons are capped at the same
-  elapsed days (partial-week YoY compares Mon–Wed vs Mon–Wed).
+  spines stop at the current week and all markets are capped at the same elapsed days.
 - **Placebo re-run:** only after population/method changes, so baselines stay comparable.
 - Reading discipline: week-one gaps are direction-only; estimates firm up by ~3 complete
   post-weeks; dose ladder sanity check TR > FR > IT > GB > ES; below the noise band,
