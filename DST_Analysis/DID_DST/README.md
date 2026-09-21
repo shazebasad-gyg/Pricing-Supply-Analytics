@@ -52,13 +52,17 @@ started on Saturday 2026-08-01; one extra historical week is queried to retain 5
 pre observations. The current post week remains visible as WTD, with every market capped
 to the same elapsed weekdays, but is excluded from the confirmatory ATT until Mon–Sun is complete.
 
-- **Primary confirmatory outcome:** raw NR per frozen cohort supplier. One supplier-weighted
-  pooled SDID across all five treated countries is the sole headline estimate. Country SDIDs
-  are heterogeneity diagnostics and are gated on pre-fit and rolling holdout quality.
+- **Primary confirmatory outcome:** raw NR per frozen cohort supplier. One joint canonical
+  block-treatment SDID across all five treated countries is the sole headline estimate.
+  Each treated country receives weight 1/5, so the estimand is the average treated-country
+  effect on NR per supplier, not an average effect across suppliers. Country SDIDs are
+  heterogeneity diagnostics and are gated on pre-fit and rolling holdout quality.
 - **Secondary directional outcomes:** current-period bookings, tickets, GMV and visitors
   per frozen cohort supplier, plus supplier-level conversion, add-to-cart,
   unavailability and base commission rates. No YoY transformation is used in the modeled
-  outputs. These are driver diagnostics, not additional confirmatory hypotheses.
+  outputs. Canonical SDID is fitted independently for every treated-country × outcome pair,
+  including outcome-specific unit and time weights. These are driver diagnostics, not
+  additional confirmatory hypotheses.
 - **Customer rates:** calculate each supplier's weekly rate from that supplier's own
   visitors, then average equally across suppliers with at least one visitor. This prevents
   the largest suppliers from determining the country rate.
@@ -74,37 +78,68 @@ to the same elapsed weekdays, but is excluded from the confirmatory ATT until Mo
 ## 4. Method
 
 1. **Primary formal Synthetic DiD:** fit non-negative unit weights summing to one to the
-   raw pre-treatment NR path, and non-negative time weights summing to one by matching
-   controls' average post outcome to their pre periods. Estimate the weighted two-way
-   difference using only complete post weeks. The pooled treatment path weights the five
-   treated countries by their frozen supplier counts, so the per-supplier ATT scales
-   directly to treated-cohort EUR. No YoY transformation or normalization is used.
-2. **Secondary additive synthetic DiD:** every current-period secondary metric uses
-   `(treatment post − treatment pre) − (synthetic post − synthetic pre)` in its observed
-   unit. Donor weights match centered pre-period paths, and an additive level adjustment
-   aligns the synthetic series for display without changing the DiD. There is no
-   pre-mean normalization. Results are bookings/tickets/visitors or EUR per supplier,
-   percentage points for shares/rates, and index points for prices. These are exploratory
-   driver measures, not additional confirmatory claims. Primary runs use 52 weeks;
-   `pre_weeks` supports 26/52/78 sensitivity runs.
-3. **Inference and validation:** pooled placebo sensitivity enumerates every 5-of-12
-   pseudo-treated donor assignment (792 assignments), reports
-   `(1 + exceedances) / (1 + 792)`, and forms a placebo-distribution interval. This is
-   explicitly not called an exact randomized-experiment p-value because policy assignment
-   is not proven exchangeable. The same formal estimator is run at the fixed October 2025
-   time placebo. Five non-overlapping four-week pre-treatment holdouts over 104 weeks select
-   26/52/78 weeks without post-treatment tuning; the configured run blocks if 52 weeks is
-   no longer selected. Country estimates failing the 10% in-sample and holdout RMSE gate are
-   labelled `inconclusive_fit`.
+   equally weighted average treated-country pre-treatment NR path, and non-negative time
+   weights summing to one by matching controls' average post outcome to their pre periods.
+   The unit-weight regularisation uses
+   `zeta = (N_treated * T_post)^0.25 * sigma`, with all five treated countries retained in
+   `N_treated`. Estimate the weighted two-way difference using only complete post weeks.
+   Supplier counts never enter this confirmatory estimator. No YoY transformation or
+   normalization is used. SLSQP solutions are accepted only after optimiser success plus
+   finite-objective and simplex checks; genuine failures run a projected-gradient fallback
+   that must independently converge and pass the same checks.
+2. **Metric-specific secondary SDID:** for every treated country and current-period
+   secondary metric, independently estimate canonical non-negative unit weights and
+   non-negative time weights, then calculate the weighted two-way difference using complete
+   post weeks. Results are bookings/tickets/visitors or EUR per supplier, percentage points
+   for shares/rates, and index points for prices. These are exploratory driver measures,
+   not additional confirmatory claims. All production fits use 52 weeks; `pre_weeks`
+   supports 26/52/78 sensitivity runs for the primary design.
+3. **Inference and validation:** Section 5 inference reruns the exact joint equal-country
+   estimator used for the primary point estimate. The default small-treated-sample method
+   enumerates every 5-of-12 pseudo-treated control assignment (792 assignments), re-estimates
+   both weight vectors and estimates variance from the natural-unit placebo ATTs. The
+   reported 95% interval is the joint ATT ± 1.96 placebo standard errors. This variance
+   assumes comparable error distributions across treated and control countries. A
+   configurable country-cluster bootstrap instead resamples complete country trajectories
+   with replacement, preserves treatment status and refits the full estimator; its interval
+   is the bootstrap percentile interval. Country and joint placebo ranks remain descriptive
+   sensitivity diagnostics, not exact randomization or confirmatory p-values. The same
+   formal estimator is run at the fixed October 2025 time placebo. Five non-overlapping
+   four-week pre-treatment holdouts over 104 weeks select 26/52/78 weeks without
+   post-treatment tuning; the configured run blocks if 52 weeks is no longer selected.
+   Country estimates failing the 10% in-sample and holdout RMSE gate are labelled
+   `inconclusive_fit`.
+   Every country-outcome fit additionally receives four rolling four-week pseudo-post
+   tests within the 52 clean pre-weeks, using 36/40/44/48 expanding training weeks. A
+   secondary result is labelled directionally reliable only when both its in-sample and
+   mean holdout RMSE are at most 10%; this internal label does not change published schemas.
 4. **Display layer ("story units"):** every series is also published in intuitive units —
    current per-supplier levels for volume metrics, EUR per tour for prices and natural
-   units for shares/rates. The primary twin is adjusted
-   with the SDID time-weighted pre gap so its complete-post mean gap equals the formal ATT.
-   Secondary twin gaps remain directional and are never labelled causal DiD.
-5. **Financial decomposition:** the dedicated summary reports indirect base-NR SDID impact,
-   direct rate-applied DST accrual, and their sum. The direct amount is explicitly labelled
-   an accrual estimate because the available surcharge table contains rates, not an
-   authoritative charge-level invoice field.
+   units for shares/rates. Every twin uses its own country-metric SDID's time-weighted
+   pre-period adjustment. Secondary twin gaps remain directional and are never promoted
+   to confirmatory claims.
+5. **Financial decomposition:** the dedicated summary reports indirect base-NR impact,
+   direct rate-applied DST accrual, and their sum. Multiplying the equal-country
+   confirmatory ATT by the total supplier count would change its estimand, so indirect EUR
+   scaling uses a separately labelled supplier-count-weighted aggregate-outcome sensitivity.
+   It is not the confirmatory estimate. The direct amount is explicitly labelled an accrual
+   estimate because the available surcharge table contains rates, not an authoritative
+   charge-level invoice field.
+
+### Non-publishing common-outcome benchmark
+
+Cell 21 tests one shared donor-weight vector per treated country using the concatenated
+multiple-outcome SCM objective from Sun, Ben-Michael & Feller (2025). Each outcome is
+unit-demeaned and scaled by its pre-period standard deviation before fitting. Four rolling
+pre-DST holdouts compare common, NR-only and metric-specific donor weights; shared-factor
+and leave-one-out-outcome diagnostics test whether one comparison can represent every
+metric. The benchmark does not replace `synth_results` or write any table.
+
+In the current run, mean holdout RMSE was 7.17% for common weights, 7.29% for NR-only
+weights and 4.94% for metric-specific weights. Although three components explained 80.1%
+of standardized pre-period variation, leave-one-out fit failed materially for several
+country/metric pairs, especially Turkey's volume outcomes. The all-metric common design
+is therefore not adopted.
 
 ## 5. Supplier reaction flags (no fixed thresholds)
 
@@ -137,9 +172,9 @@ rate** (never raw counts); no individual supplier can be attributed to DST — o
 | 4 | 1b8986fc | customer (traffic/conversion) query |
 | 5 | — | merge → `dfm` (week × country panel) |
 | 6–9 | — | descriptive charts |
-| 10 | f75f749e | pooled/country formal raw-NR SDID + directional secondary SCM |
-| 11 | — | pooled 5-of-12 placebo sensitivity |
-| 12 | — | 26/52/78-week rolling pre-period validation and fit gates |
+| 10 | f75f749e | joint equal-country raw-NR SDID + country-metric diagnostic fits |
+| 11 | — | matched joint placebo variance / configurable country-cluster bootstrap |
+| 12 | — | primary 26/52/78 validation + country-metric rolling holdouts and fit labels |
 | 13 | — | actual-vs-synthetic panels |
 | 14 | — | blocking pre-publication validation |
 | 15 | publishsynth1 | staged atomic publication + pooled financial summary |
@@ -147,6 +182,7 @@ rate** (never raw counts); no individual supplier can be attributed to DST — o
 | 17 | aff61bff | supplier-level descriptive pre/post query (`df_sup`) |
 | 18–19 | — | post-run and production-output validation |
 | 20 | e8ef0926 | reaction flags + severities + action list |
+| 21 | — | non-publishing common multiple-outcome weight benchmark |
 
 ## 7. What the publish cell writes
 
@@ -159,14 +195,18 @@ then applied with one Delta `MERGE` per output. Production is never emptied befo
 - **`production.supply_analytics.dst_synthetic_control_results`** — scenario, metric,
   country: `did_pct_of_pre`, `pre_fit_rmse_pct`, `placebos_larger`, `donor_weights` (JSON),
   `placebo_p_value`, `did_absolute`, `cohort_suppliers`. For backward compatibility these
-  legacy field names remain; only `nr_per_supplier` is formal SDID. For every secondary
-  metric, `did_pct_of_pre` now contains the natural-unit additive DiD despite its legacy
+  legacy field names remain. Every metric uses the canonical SDID estimator, while only
+  `nr_per_supplier` is a confirmatory outcome. For every secondary metric,
+  `did_pct_of_pre` contains the natural-unit SDID ATT despite its legacy
   name. Use `did_absolute` for dashboard presentation; it contains the same per-supplier
   DiD in story units, including EUR for GMV and prices. Country placebo fields are
-  descriptive ranks.
+  descriptive ranks. `donor_weights` is metric-specific because every outcome receives
+  an independent canonical SDID fit.
 - **`production.supply_analytics.dst_sdid_summary`** — one row per scenario/method version:
-  pooled formal-SDID ATT and interval, complete horizon, unit/time weights, country fit
-  statuses, indirect base-NR impact, direct DST accrual estimate, and combined weekly EUR.
+  joint equal-country canonical-SDID ATT and interval, complete horizon, unit/time weights,
+  country fit statuses, separately labelled business-sensitivity indirect base-NR impact,
+  direct DST accrual estimate, and combined weekly EUR. Legacy `pooled_*` column names are
+  retained for downstream compatibility.
 
 ## 8. Runbook
 
